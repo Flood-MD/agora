@@ -6,6 +6,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import type { z } from 'zod';
 import {
   createSessionSchema,
+  customModelSchema,
   sendMessageSchema,
   updateSessionSchema,
   updateSettingsSchema,
@@ -57,6 +58,19 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
   });
 
   api.get('/models', async (c) => c.json(await providers.catalog(c.req.query('refresh') === '1')));
+
+  api.post('/models/custom', async (c) => {
+    const input = await parse(c, customModelSchema);
+    if (input instanceof Response) return input;
+    return c.json(settings.addCustomModel(input), 201);
+  });
+
+  // The model id contains slashes, so it travels as a query parameter.
+  api.delete('/models/custom', (c) => {
+    const id = c.req.query('id');
+    if (!id || !settings.removeCustomModel(id)) return c.json({ error: 'Not found' }, 404);
+    return c.body(null, 204);
+  });
 
   api.get('/sessions', (c) => c.json(store.list(running)));
 

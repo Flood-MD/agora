@@ -1,7 +1,8 @@
 import { PROVIDER_LABELS, type ModelInfo, type ProviderId } from '@agora/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store';
-import { RefreshIcon, SearchIcon } from './icons';
+import { AddModelById } from './AddModelById';
+import { PlusIcon, RefreshIcon, SearchIcon, TrashIcon } from './icons';
 import { Modal } from './Modal';
 
 const MAX_PER_PROVIDER = 200;
@@ -28,7 +29,9 @@ export function ModelPicker({
 }) {
   const catalog = useStore((s) => s.catalog);
   const loadCatalog = useStore((s) => s.loadCatalog);
+  const removeCustomModel = useStore((s) => s.removeCustomModel);
   const [query, setQuery] = useState('');
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (!catalog.loaded && !catalog.loading) void loadCatalog();
@@ -65,6 +68,16 @@ export function ModelPicker({
           />
         </div>
         <button
+          className={`btn shrink-0 ${adding ? 'bg-field' : ''}`}
+          onClick={() => setAdding((a) => !a)}
+          aria-expanded={adding}
+          title="Add a model by ID"
+          aria-label="Add a model by ID"
+        >
+          <PlusIcon />
+          <span className="hidden sm:inline">Add by ID</span>
+        </button>
+        <button
           className="btn"
           onClick={() => void loadCatalog(true)}
           disabled={catalog.loading}
@@ -74,6 +87,14 @@ export function ModelPicker({
           <RefreshIcon className={catalog.loading ? 'animate-spin' : ''} />
         </button>
       </div>
+
+      {adding && (
+        <AddModelById
+          initialId={groups.length ? '' : query}
+          initialProvider={current ? (current.split('/')[0] as ProviderId) : undefined}
+          onAdded={onPick}
+        />
+      )}
 
       {errors.map(([provider, error]) => (
         <p key={provider} className="mb-2 rounded-md bg-red-950/50 px-3 py-2 text-xs text-red-300">
@@ -91,7 +112,14 @@ export function ModelPicker({
         </p>
       )}
       {catalog.models.length > 0 && !groups.length && (
-        <p className="py-6 text-center text-sm text-muted">No models match “{query}”.</p>
+        <div className="py-6 text-center text-sm text-muted">
+          <p>No models match “{query}”.</p>
+          {!adding && (
+            <button className="btn mt-3" onClick={() => setAdding(true)}>
+              <PlusIcon /> Use “{query.trim()}” as a model ID
+            </button>
+          )}
+        </div>
       )}
 
       {groups.map(([provider, models]) => (
@@ -101,15 +129,25 @@ export function ModelPicker({
           </h3>
           <ul>
             {models.slice(0, MAX_PER_PROVIDER).map((m) => (
-              <li key={m.id}>
+              <li
+                key={m.id}
+                className={`flex items-center rounded-md hover:bg-panel-2 ${
+                  m.id === current ? 'bg-panel-2 ring-1 ring-accent' : ''
+                }`}
+              >
                 <button
-                  className={`flex w-full items-baseline gap-3 rounded-md px-2 py-1.5 text-left hover:bg-panel-2 ${
-                    m.id === current ? 'bg-panel-2 ring-1 ring-accent' : ''
-                  }`}
+                  className="flex min-w-0 flex-1 items-baseline gap-3 px-2 py-1.5 text-left"
                   onClick={() => onPick(m)}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">{m.name}</span>
+                    <span className="flex items-center gap-2 text-sm">
+                      <span className="truncate">{m.name}</span>
+                      {m.custom && (
+                        <span className="shrink-0 rounded bg-field px-1.5 py-px text-[10px] uppercase tracking-wide text-muted">
+                          custom
+                        </span>
+                      )}
+                    </span>
                     {m.name !== m.id.slice(provider.length + 1) && (
                       <span className="block truncate text-xs text-muted">
                         {m.id.slice(provider.length + 1)}
@@ -120,6 +158,16 @@ export function ModelPicker({
                     {[formatContext(m.contextLength), formatPrice(m)].filter(Boolean).join(' · ')}
                   </span>
                 </button>
+                {m.custom && (
+                  <button
+                    className="mr-1 rounded p-1.5 text-muted hover:text-red-400"
+                    onClick={() => void removeCustomModel(m.id)}
+                    title="Remove from list (chats already using it keep working)"
+                    aria-label={`Remove custom model ${m.name}`}
+                  >
+                    <TrashIcon size={14} />
+                  </button>
+                )}
               </li>
             ))}
             {models.length > MAX_PER_PROVIDER && (

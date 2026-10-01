@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_SLOTS } from './types';
+import { MAX_SLOTS, PROVIDER_IDS } from './types';
 
 export const slotSchema = z.object({
   id: z.string().min(1).max(64),
@@ -49,5 +49,14 @@ export const updateSettingsSchema = z.object({
     .optional(),
 });
 
+/** A model id typed in by hand, for models a provider serves but doesn't list (yet). */
+export const customModelSchema = z.object({
+  provider: z.enum(PROVIDER_IDS),
+  model: z.string().trim().min(1).max(300).regex(/^\S+$/, 'Model IDs cannot contain spaces'),
+  name: z.string().trim().max(100).optional(),
+  contextLength: z.number().int().positive().max(100_000_000).optional(),
+});
+
+export type CustomModelInput = z.infer<typeof customModelSchema>;
 export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

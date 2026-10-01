@@ -201,3 +201,75 @@ describe('settings', () => {
     expect(body.models.map((m) => m.id)).toContain('mock/echo');
   });
 });
+
+describe('custom models', () => {
+  type CatalogBody = { models: { id: string; name: string; custom?: boolean; contextLength?: number }[] };
+  const catalog = async (app: ReturnType<typeof testApp>['app']) =>
+    (await (await app.request('/api/models')).json()) as CatalogBody;
+
+  it('adds a model the provider does not list, and it can be used in a chat', async () => {
+    const { app } = testApp();
+    const add = await app.request(
+      '/api/models/custom',
+      json({ provider: 'mock', model: 'brand-new-model', name: 'Brand New', contextLength: 4096 }),
+    );
+    expect(add.status).toBe(201);
+    expect(await add.json()).toEqual({
+      id: 'mock/brand-new-model',
+      provider: 'mock',
+      name: 'Brand New',
+      contextLength: 4096,
+      custom: true,
+    });
+
+    const models = (await catalog(app)).models;
+    expect(models[0]).toMatchObject({ id: 'mock/brand-new-model', custom: true });
+    expect(models.filter((m) => m.id === 'mock/echo')).toHaveLength(1);
+
+    const config = councilConfig(mockSlot('a', 'mock/brand-new-model', 'Brand New'));
+    const s = (await (await app.request('/api/sessions', json({ config }))).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'hi' }));
+    const detail = await waitIdle(app, s.id);
+    expect(detail.messages[1]).toMatchObject({ status: 'done', model: 'mock/brand-new-model' });
+  });
+
+  it('marks a hand-added id the provider also lists, without duplicating it', async () => {
+    const { app } = testApp();
+    await app.request('/api/models/custom', json({ provider: 'mock', model: 'echo' }));
+    const echo = (await catalog(app)).models.filter((m) => m.id === 'mock/echo');
+    expect(echo).toEqual([expect.objectContaining({ name: 'Mock Echo', custom: true })]);
+  });
+
+  it('re-adding updates the entry, and removing deletes it', async () => {
+    const { app } = testApp();
+    await app.request('/api/models/custom', json({ provider: 'mock', model: 'x-1', name: 'First' }));
+    await app.request('/api/models/custom', json({ provider: 'mock', model: 'x-1', name: 'Second' }));
+    expect((await catalog(app)).models.filter((m) => m.id === 'mock/x-1').map((m) => m.name)).toEqual([
+      'Second',
+    ]);
+
+    const del = await app.request(`/api/models/custom?id=${encodeURIComponent('mock/x-1')}`, {
+      method: 'DELETE',
+    });
+    expect(del.status).toBe(204);
+    expect((await catalog(app)).models.some((m) => m.id === 'mock/x-1')).toBe(false);
+    expect((await app.request('/api/models/custom?id=mock%2Fx-1', { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('keeps models for unconfigured providers hidden until the provider is set up', async () => {
+    const { app } = testApp();
+    await app.request('/api/models/custom', json({ provider: 'openai', model: 'gpt-next' }));
+    expect((await catalog(app)).models.some((m) => m.id === 'openai/gpt-next')).toBe(false);
+  });
+
+  it('validates the id', async () => {
+    const { app } = testApp();
+    for (const body of [
+      { provider: 'mock', model: '' },
+      { provider: 'mock', model: 'has space' },
+      { provider: 'nope', model: 'x' },
+    ]) {
+      expect((await app.request('/api/models/custom', json(body))).status).toBe(400);
+    }
+  });
+});

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type {
+  CustomModelInput,
   Message,
+  ModelInfo,
   Session,
   SessionConfig,
   SessionEvent,
@@ -42,6 +44,8 @@ interface State {
   loadSettings(): Promise<void>;
   saveSettings(input: UpdateSettingsInput): Promise<void>;
   loadCatalog(refresh?: boolean): Promise<void>;
+  addCustomModel(input: CustomModelInput): Promise<ModelInfo>;
+  removeCustomModel(id: string): Promise<void>;
   loadSessions(): Promise<void>;
   newSession(): Promise<string>;
   renameSession(id: string, title: string): Promise<void>;
@@ -102,6 +106,21 @@ export const useStore = create<State>()((set, get) => ({
         catalog: { ...s.catalog, loading: false },
         toast: `Could not load models: ${errorText(err)}`,
       }));
+    }
+  },
+
+  async addCustomModel(input) {
+    const model = await api.addCustomModel(input);
+    await get().loadCatalog();
+    return model;
+  },
+
+  async removeCustomModel(id) {
+    try {
+      await api.removeCustomModel(id);
+      await get().loadCatalog();
+    } catch (err) {
+      set({ toast: `Could not remove model: ${errorText(err)}` });
     }
   },
 

@@ -20,6 +20,8 @@ export interface ModelInfo {
   vision?: boolean;
   /** USD per 1M tokens, when the provider publishes it. */
   pricing?: { prompt: number; completion: number };
+  /** Added by hand (Model picker ▸ Add by ID) rather than listed by the provider. */
+  custom?: boolean;
 }
 
 export interface Slot {

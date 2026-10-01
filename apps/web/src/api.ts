@@ -1,4 +1,5 @@
 import type {
+  CustomModelInput,
   Message,
   ModelInfo,
   ProviderId,
@@ -42,6 +43,10 @@ export const api = {
   saveSettings: (input: UpdateSettingsInput) =>
     request<SettingsView>('/settings', { method: 'PUT', json: input }),
   models: (refresh = false) => request<Catalog>(`/models${refresh ? '?refresh=1' : ''}`),
+  addCustomModel: (input: CustomModelInput) =>
+    request<ModelInfo>('/models/custom', { method: 'POST', json: input }),
+  removeCustomModel: (id: string) =>
+    request<void>(`/models/custom?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
   sessions: () => request<SessionSummary[]>('/sessions'),
   session: (id: string) => request<SessionDetail>(`/sessions/${id}`),
   createSession: () => request<Session>('/sessions', { method: 'POST', json: {} }),

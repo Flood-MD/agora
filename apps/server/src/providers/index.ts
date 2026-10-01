@@ -95,11 +95,25 @@ export class Providers {
         }
       }),
     );
-    return { models: lists.flat(), errors };
+    // Hand-added models come first in their provider's group. If the provider has since started
+    // listing the same id, the listed entry wins (it has richer metadata) but stays marked as custom.
+    const custom = this.settings
+      .customModels()
+      .filter((m) => ids.includes(m.provider as (typeof ids)[number]));
+    const customIds = new Set(custom.map((m) => m.id));
+    const listed = lists.flat();
+    const listedIds = new Set(listed.map((m) => m.id));
+    const models = [
+      ...custom.filter((m) => !listedIds.has(m.id)),
+      ...listed.map((m) => (customIds.has(m.id) ? { ...m, custom: true } : m)),
+    ];
+    return { models, errors };
   }
 
-  /** Cached info for one model, if its provider's catalogue has been loaded. */
+  /** Known info for one model: a loaded provider catalogue, or a hand-added entry. */
   cachedModel(id: string): ModelInfo | undefined {
+    const custom = this.settings.customModels().find((m) => m.id === id);
+    if (custom?.contextLength) return custom;
     for (const { models } of this.cache.values()) {
       const m = models.find((x) => x.id === id);
       if (m) return m;

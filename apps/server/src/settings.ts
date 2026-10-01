@@ -1,4 +1,11 @@
-import type { ProviderId, ProviderStatus, SettingsView, UpdateSettingsInput } from '@agora/shared';
+import type {
+  CustomModelInput,
+  ModelInfo,
+  ProviderId,
+  ProviderStatus,
+  SettingsView,
+  UpdateSettingsInput,
+} from '@agora/shared';
 import type { AppConfig } from './config';
 import type { Db } from './db';
 
@@ -78,6 +85,36 @@ export class Settings {
       ) as SettingsView['providers'],
       mockEnabled: this.config.mock,
     };
+  }
+
+  /** Models added by hand, for every provider (configured or not). */
+  customModels(): ModelInfo[] {
+    try {
+      return JSON.parse(this.get('customModels') ?? '[]') as ModelInfo[];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Adds (or updates) a hand-entered model and returns it. */
+  addCustomModel(input: CustomModelInput): ModelInfo {
+    const model: ModelInfo = {
+      id: `${input.provider}/${input.model}`,
+      provider: input.provider,
+      name: input.name || input.model,
+      contextLength: input.contextLength,
+      custom: true,
+    };
+    const others = this.customModels().filter((m) => m.id !== model.id);
+    this.set('customModels', JSON.stringify([...others, model]));
+    return model;
+  }
+
+  removeCustomModel(id: string): boolean {
+    const list = this.customModels();
+    const next = list.filter((m) => m.id !== id);
+    this.set('customModels', next.length ? JSON.stringify(next) : null);
+    return next.length !== list.length;
   }
 
   /** Applies an update and returns the providers whose credentials changed. */
