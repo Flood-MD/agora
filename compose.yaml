@@ -1,0 +1,21 @@
+services:
+  agora:
+    build: .
+    image: agora:latest
+    container_name: agora
+    ports:
+      # Reachable from every device on your LAN at http://<this machine's IP>:8080
+      - '${AGORA_PORT:-8080}:8080'
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATA_DIR: /data
+    volumes:
+      - agora-data:/data
+    restart: unless-stopped
+
+volumes:
+  agora-data:

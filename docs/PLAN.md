@@ -1,7 +1,7 @@
 # Agora — Implementation Plan
 
 A self-hostable, open-source multi-model group chat inspired by the functionality of lmcouncil.ai
-(as seen in reference screenshots). Agora reproduces the *features*; its UI, branding, and assets are original work.
+(as seen in reference screenshots). Agora reproduces the _features_; its UI, branding, and assets are original work.
 
 **Deployment target:** single user, self-hosted via Docker on a home LAN, used from any device on that network
 (desktop, laptop, phone, tablet) in the browser.
@@ -13,41 +13,41 @@ Providers at launch: **OpenRouter, Anthropic, OpenAI, Hugging Face** (plus an op
 
 ## 1. Feature inventory (from screenshots + owner's clarifications)
 
-| Area | Element | Behaviour in Agora |
-|---|---|---|
-| Header | Title + ▾ | Session switcher (new / rename / delete / list of saved sessions) |
-| | Hide | Collapse the model-slot bar to give the chat more room |
-| | Save / Load | Export / import a session (config + transcript + context) as a JSON file |
-| | `M` | **Global settings**: API keys per provider, username, custom endpoint URL, defaults (Self-Chat rounds, DM visibility default), theme |
-| Slot bar | Coloured slot cards (1…N) | Each slot = one model instance with colour, display name, model id; `×` removes it |
-| | Empty slot `4 +` | Opens model picker (searchable, grouped by provider, shows context length / price where known) |
-| | `+` (left) | Add another slot (soft cap, e.g. 8) |
-| | Roles | Opens the Roles modal (below) |
-| | Restore / Clear | Clear transcript; Restore undoes the last Clear (keep one snapshot) |
-| Roles modal | Rapid Roleplay | Free-text scenario → **slot 1's model** generates N characters (name + per-slot prompt, optionally model count). Checkbox "allow overwrite of selection/number of models" |
-| | System Prompt | Global prompt sent to every model |
-| | Custom Names | Per-slot display name + "show model names underneath" toggle |
-| | Slot Prompts | Per-slot prompt appended after the global prompt |
-| | Clear All / Cancel / Save & Close | Draft state in modal, committed only on Save |
-| Composer | Text box, Send | Group message to all active slots |
-| | Attach ▸ Files | Text/code/PDF/images → shared context (images go to vision-capable models) |
-| | Attach ▸ Folders | Directory upload (`webkitdirectory`), ignore-list + size cap |
-| | Attach ▸ GitHub | Import a public (or token-authed) repo / path / branch as context |
-| | Attach ▸ Transcribe | Audio → text via Whisper (OpenAI) or HF ASR model |
-| | Attach ▸ YouTube | Fetch transcript of a video URL into context |
-| | GitHub icon | Link to the Agora repo |
-| | Clock icon | Unknown on the original (shown disabled) — omitted for now |
-| | Speech bubble | **Past chats**: list / search / open / delete saved sessions |
-| | Globe | Web search toggle |
-| | Refresh | Regenerate last round |
-| | DM target | Send to one slot only, with **Visible / Private** toggle (see §5) |
-| Modes row | `-` / `+` | **Pure UI**: collapses the mode buttons (Fusion, Imagine, Leader, Emoji, Self-Chat) into itself and becomes `+`; `+` expands them again. State remembered per device. No effect on chat |
-| | Fusion | After all models answer, **slot 1's model** merges answers into one synthesis |
-| | Imagine | Image generation — **deferred** (button hidden until implemented) |
-| | Leader ♛ | Leader mode on/off: others answer first, the leader sees their answers and gives the final answer |
-| | `↑` beside Leader | **Chooses which slot is the leader** (popover listing slots, leader slot gets a crown badge) |
-| | Emoji | **Emoji picker** that inserts emojis into the composer message |
-| | Self-Chat! | Models converse among themselves for K rounds without user input; Stop button |
+| Area        | Element                           | Behaviour in Agora                                                                                                                                                                      |
+| ----------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Header      | Title + ▾                         | Session switcher (new / rename / delete / list of saved sessions)                                                                                                                       |
+|             | Hide                              | Collapse the model-slot bar to give the chat more room                                                                                                                                  |
+|             | Save / Load                       | Export / import a session (config + transcript + context) as a JSON file                                                                                                                |
+|             | `M`                               | **Global settings**: API keys per provider, username, custom endpoint URL, defaults (Self-Chat rounds, DM visibility default), theme                                                    |
+| Slot bar    | Coloured slot cards (1…N)         | Each slot = one model instance with colour, display name, model id; `×` removes it                                                                                                      |
+|             | Empty slot `4 +`                  | Opens model picker (searchable, grouped by provider, shows context length / price where known)                                                                                          |
+|             | `+` (left)                        | Add another slot (soft cap, e.g. 8)                                                                                                                                                     |
+|             | Roles                             | Opens the Roles modal (below)                                                                                                                                                           |
+|             | Restore / Clear                   | Clear transcript; Restore undoes the last Clear (keep one snapshot)                                                                                                                     |
+| Roles modal | Rapid Roleplay                    | Free-text scenario → **slot 1's model** generates N characters (name + per-slot prompt, optionally model count). Checkbox "allow overwrite of selection/number of models"               |
+|             | System Prompt                     | Global prompt sent to every model                                                                                                                                                       |
+|             | Custom Names                      | Per-slot display name + "show model names underneath" toggle                                                                                                                            |
+|             | Slot Prompts                      | Per-slot prompt appended after the global prompt                                                                                                                                        |
+|             | Clear All / Cancel / Save & Close | Draft state in modal, committed only on Save                                                                                                                                            |
+| Composer    | Text box, Send                    | Group message to all active slots                                                                                                                                                       |
+|             | Attach ▸ Files                    | Text/code/PDF/images → shared context (images go to vision-capable models)                                                                                                              |
+|             | Attach ▸ Folders                  | Directory upload (`webkitdirectory`), ignore-list + size cap                                                                                                                            |
+|             | Attach ▸ GitHub                   | Import a public (or token-authed) repo / path / branch as context                                                                                                                       |
+|             | Attach ▸ Transcribe               | Audio → text via Whisper (OpenAI) or HF ASR model                                                                                                                                       |
+|             | Attach ▸ YouTube                  | Fetch transcript of a video URL into context                                                                                                                                            |
+|             | GitHub icon                       | Link to the Agora repo                                                                                                                                                                  |
+|             | Clock icon                        | Unknown on the original (shown disabled) — omitted for now                                                                                                                              |
+|             | Speech bubble                     | **Past chats**: list / search / open / delete saved sessions                                                                                                                            |
+|             | Globe                             | Web search toggle                                                                                                                                                                       |
+|             | Refresh                           | Regenerate last round                                                                                                                                                                   |
+|             | DM target                         | Send to one slot only, with **Visible / Private** toggle (see §5)                                                                                                                       |
+| Modes row   | `-` / `+`                         | **Pure UI**: collapses the mode buttons (Fusion, Imagine, Leader, Emoji, Self-Chat) into itself and becomes `+`; `+` expands them again. State remembered per device. No effect on chat |
+|             | Fusion                            | After all models answer, **slot 1's model** merges answers into one synthesis                                                                                                           |
+|             | Imagine                           | Image generation — **deferred** (button hidden until implemented)                                                                                                                       |
+|             | Leader ♛                          | Leader mode on/off: others answer first, the leader sees their answers and gives the final answer                                                                                       |
+|             | `↑` beside Leader                 | **Chooses which slot is the leader** (popover listing slots, leader slot gets a crown badge)                                                                                            |
+|             | Emoji                             | **Emoji picker** that inserts emojis into the composer message                                                                                                                          |
+|             | Self-Chat!                        | Models converse among themselves for K rounds without user input; Stop button                                                                                                           |
 
 ---
 
@@ -76,6 +76,7 @@ Providers at launch: **OpenRouter, Anthropic, OpenAI, Hugging Face** (plus an op
 ```
 
 ### Why orchestration runs on the server
+
 Because you'll use Agora from several devices, the server — not a browser tab — owns each run:
 
 - A Self-Chat or long Fusion keeps going if your phone locks its screen or you close the tab.
@@ -86,11 +87,14 @@ Because you'll use Agora from several devices, the server — not a browser tab 
   `updatedAt` check and the UI refreshes on conflict.
 
 ### Stack
+
 pnpm workspace monorepo — `apps/web` (Vite/React), `apps/server` (Hono on Node), `packages/shared`
-(types, zod schemas, prompt builder). SQLite via `better-sqlite3` + Drizzle. In production the server also serves
-the built SPA, so there is one container and one port.
+(types, zod schemas, prompt builder). SQLite via Node's built-in `node:sqlite` (no native module to compile, so the
+server bundles to a single file and the Docker image needs only Node). In production the server also serves the built
+SPA, so there is one container and one port.
 
 ### Repo layout
+
 ```
 apps/web/src/{components,stores,api,lib}
 apps/server/src/{routes,orchestrator,providers,context,db}
@@ -99,6 +103,7 @@ docs/PLAN.md  .env.example  Dockerfile  compose.yaml
 ```
 
 ### LAN deployment & security
+
 - `compose.yaml`: one service, `HOST=0.0.0.0`, `PORT=8080`, named volume `agora-data:/data` (SQLite + uploads),
   `restart: unless-stopped`. Reach it at `http://<server-ip>:8080` (or a hostname via your router/mDNS).
 - **API keys stay on the server.** The settings UI can set/replace keys but never reads them back (shows `sk-…a1b2`).
@@ -107,7 +112,7 @@ docs/PLAN.md  .env.example  Dockerfile  compose.yaml
   Single shared password → signed HTTP-only session cookie, long-lived per device. Off by default; strongly
   suggested if guests use your network.
 - **HTTPS caveat:** browsers only allow microphone recording in a secure context. Over plain `http://<lan-ip>`,
-  *Transcribe* falls back to uploading an audio file from other devices (recording still works on `localhost`).
+  _Transcribe_ falls back to uploading an audio file from other devices (recording still works on `localhost`).
   An optional `compose.https.yaml` adds Caddy with an internal CA for those who want in-browser recording everywhere.
 - Mobile-first responsive layout and a PWA manifest (add-to-home-screen on phones).
 
@@ -118,18 +123,18 @@ docs/PLAN.md  .env.example  Dockerfile  compose.yaml
 ```ts
 interface Provider {
   id: 'openai' | 'anthropic' | 'openrouter' | 'huggingface' | 'custom';
-  listModels(): Promise<ModelInfo[]>;          // id, label, ctx, vision, pricing?
+  listModels(): Promise<ModelInfo[]>; // id, label, ctx, vision, pricing?
   stream(req: ChatRequest, signal: AbortSignal): AsyncIterable<ChatEvent>; // delta | usage | error | done
 }
 ```
 
-| Provider | Transport | Notes |
-|---|---|---|
-| OpenAI | `openai` SDK, Chat Completions | `/v1/models` is unannotated → keep a small local capability map |
-| OpenRouter | OpenAI-compatible, `baseURL=https://openrouter.ai/api/v1` | Rich `/models` (ctx, pricing, modalities); `HTTP-Referer`/`X-Title` headers; web search via `plugins:[{id:'web'}]` |
-| Hugging Face | OpenAI-compatible Inference Providers router `https://router.huggingface.co/v1` | Model list from router `/v1/models`; ASR for Transcribe |
-| Anthropic | `@anthropic-ai/sdk` Messages API, streaming | `system` is a top-level param; strict user/assistant alternation (merge adjacent same-role turns); native web-search tool; required `max_tokens` |
-| Custom | OpenAI-compatible with user base URL | Ollama, LM Studio, vLLM, llama.cpp |
+| Provider     | Transport                                                                       | Notes                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| OpenAI       | `openai` SDK, Chat Completions                                                  | `/v1/models` is unannotated → keep a small local capability map                                                                                  |
+| OpenRouter   | OpenAI-compatible, `baseURL=https://openrouter.ai/api/v1`                       | Rich `/models` (ctx, pricing, modalities); `HTTP-Referer`/`X-Title` headers; web search via `plugins:[{id:'web'}]`                               |
+| Hugging Face | OpenAI-compatible Inference Providers router `https://router.huggingface.co/v1` | Model list from router `/v1/models`; ASR for Transcribe                                                                                          |
+| Anthropic    | `@anthropic-ai/sdk` Messages API, streaming                                     | `system` is a top-level param; strict user/assistant alternation (merge adjacent same-role turns); native web-search tool; required `max_tokens` |
+| Custom       | OpenAI-compatible with user base URL                                            | Ollama, LM Studio, vLLM, llama.cpp                                                                                                               |
 
 Three of four providers share one `openaiCompat` adapter parameterised by base URL + headers. Model ids are
 namespaced `provider/model`. Catalogues are cached (memory + SQLite, 6 h TTL) and only listed for providers whose
@@ -144,7 +149,7 @@ One transcript is shared by all slots. Each message:
 
 `buildMessages(slot, transcript, config)` (in `packages/shared`, heavily unit-tested) produces the per-slot request:
 
-1. **System** = global system prompt + slot prompt + an auto-generated *roster block*:
+1. **System** = global system prompt + slot prompt + an auto-generated _roster block_:
    "You are **{name}** in a group chat with **{username}** (the human) and: {other names}. Messages from others are
    prefixed `[Name]:`. Reply only as yourself; do not write other participants' lines." + mode instructions (leader…).
    `{username}` comes from global settings (default "User").
@@ -161,21 +166,22 @@ One transcript is shared by all slots. Each message:
 
 ## 5. Orchestration modes (server-side)
 
-All runs go through one `runRound(plan)` helper: a list of *steps*, each step = set of slots run in parallel, each
+All runs go through one `runRound(plan)` helper: a list of _steps_, each step = set of slots run in parallel, each
 step seeing everything produced by earlier steps. Every slot call has its own `AbortController`; Stop aborts the
 session's whole run. Tokens are batched (~50 ms) into SQLite and pushed to SSE subscribers.
 
-| Mode | Steps |
-|---|---|
-| Group (default) | `[[all slots]]` — parallel, each sees transcript up to the user message |
-| Sequential (setting) | `[[s1],[s2],…]` — each sees prior answers this round |
-| DM | `[[target slot]]` — see below |
-| Leader | `[[non-leaders],[leader]]` + leader gets a "consider the others' answers and give the final answer" instruction. Leader chosen via the `↑` picker; defaults to slot 1; if the leader slot is removed, falls back to slot 1 |
-| Fusion | `[[all slots],[slot 1]]` — slot 1's model receives all answers and emits a merged answer, rendered as a distinct "Fusion" card |
-| Self-Chat | Repeat `[[s1],[s2],…]` for K rounds (default 6, set in Settings) or until Stop; optional seed topic from composer |
-| Regenerate | Re-run the last round's plan, replacing those messages (previous versions kept as swipeable variants) |
+| Mode                 | Steps                                                                                                                                                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Group (default)      | `[[all slots]]` — parallel, each sees transcript up to the user message                                                                                                                                                    |
+| Sequential (setting) | `[[s1],[s2],…]` — each sees prior answers this round                                                                                                                                                                       |
+| DM                   | `[[target slot]]` — see below                                                                                                                                                                                              |
+| Leader               | `[[non-leaders],[leader]]` + leader gets a "consider the others' answers and give the final answer" instruction. Leader chosen via the `↑` picker; defaults to slot 1; if the leader slot is removed, falls back to slot 1 |
+| Fusion               | `[[all slots],[slot 1]]` — slot 1's model receives all answers and emits a merged answer, rendered as a distinct "Fusion" card                                                                                             |
+| Self-Chat            | Repeat `[[s1],[s2],…]` for K rounds (default 6, set in Settings) or until Stop; optional seed topic from composer                                                                                                          |
+| Regenerate           | Re-run the last round's plan, replacing those messages (previous versions kept as swipeable variants)                                                                                                                      |
 
 ### Private messages (DMs)
+
 Composer has a DM target selector (`All` or a slot) and, when a slot is chosen, a **Visible / Private** toggle
 (default set in Settings).
 
@@ -237,18 +243,22 @@ stored with the session (files under `/data/uploads`).
 
 ## 9. Milestones
 
-| # | Deliverable | Done when |
-|---|---|---|
-| M0 | Monorepo scaffold, lint/format/typecheck, CI, mock provider, `.env.example`, Dockerfile + compose | `docker compose up` serves an empty shell reachable from another LAN device; CI green |
-| M1 | Provider layer (4 + custom), Settings (`M`: keys, username), `/api/models` | Keys entered in UI; model picker lists real models |
-| M2 | Sessions in SQLite, server orchestrator, SSE feed, slot bar, group chat, stop | 3 models chat together; a second device sees the same stream live |
-| M3 | `buildMessages` + Roles modal (system / names / slot prompts) | Unit tests on prompt building; prompts visibly honoured |
-| M4 | Past chats (speech bubble), session switcher, Save/Load JSON, Clear/Restore, Hide, mobile layout | Export→import round-trips; usable on a phone |
-| M5 | Modes: Leader + picker, Fusion, Self-Chat, Regenerate, DMs (visible/private), sequential | Each mode has an e2e test; private-DM leak test passes |
-| M6 | Context: files, folders, GitHub, YouTube, Transcribe; web-search toggle | Chips + token counts; models use injected content |
-| M7 | Rapid Roleplay + presets; emoji picker; collapsible modes row | Scenario → populated roles in one click |
-| M8 | Polish: optional password, PWA, cost display, background, a11y, optional HTTPS compose, README | Clean-clone install works following README only |
-| Later | Imagine (image generation) | — |
+| #     | Deliverable                                                                                       | Done when                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| M0    | Monorepo scaffold, lint/format/typecheck, CI, mock provider, `.env.example`, Dockerfile + compose | `docker compose up` serves an empty shell reachable from another LAN device; CI green |
+| M1    | Provider layer (4 + custom), Settings (`M`: keys, username), `/api/models`                        | Keys entered in UI; model picker lists real models                                    |
+| M2    | Sessions in SQLite, server orchestrator, SSE feed, slot bar, group chat, stop                     | 3 models chat together; a second device sees the same stream live                     |
+| M3    | `buildMessages` + Roles modal (system / names / slot prompts)                                     | Unit tests on prompt building; prompts visibly honoured                               |
+| M4    | Past chats (speech bubble), session switcher, Save/Load JSON, Clear/Restore, Hide, mobile layout  | Export→import round-trips; usable on a phone                                          |
+| M5    | Modes: Leader + picker, Fusion, Self-Chat, Regenerate, DMs (visible/private), sequential          | Each mode has an e2e test; private-DM leak test passes                                |
+| M6    | Context: files, folders, GitHub, YouTube, Transcribe; web-search toggle                           | Chips + token counts; models use injected content                                     |
+| M7    | Rapid Roleplay + presets; emoji picker; collapsible modes row                                     | Scenario → populated roles in one click                                               |
+| M8    | Polish: optional password, PWA, cost display, background, a11y, optional HTTPS compose, README    | Clean-clone install works following README only                                       |
+| Later | Imagine (image generation)                                                                        | —                                                                                     |
+
+**Status:** M0–M2 implemented. Also done early: the core of `buildMessages` (roster, private-message filtering,
+truncation) with unit tests, the session switcher, and Hide. Not yet verified: live calls to the real provider
+APIs, and a `docker build` (no Docker daemon was available while building M0–M2).
 
 **Testing:** Vitest for `packages/shared` (prompt building, role mapping, audience filtering, truncation, Anthropic
 alternation), provider adapters against recorded fixtures (`msw`), orchestrator tests with the mock provider, and
@@ -259,19 +269,20 @@ appears in any other slot's outgoing request across every mode.
 
 ## 10. Decisions log
 
-| Question | Decision |
-|---|---|
-| `-` button | UI-only collapse/expand of the modes row |
-| Imagine | Image generation; deferred |
-| Emoji | Emoji picker inserting into the message |
-| `M` | Global settings: API keys, username |
-| Speech bubble | Past chats |
-| `↑` beside Leader | Picks the leader slot |
-| Users | Single user, private; optional shared password because it's on a LAN |
-| DM visibility | Per-message Visible/Private toggle; private messages and their replies exist only in the target's context, flagged as private |
-| Rapid Roleplay / Fusion model | Slot 1's model |
-| Distribution | Browser + Docker, LAN-accessible from all devices |
+| Question                      | Decision                                                                                                                      |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `-` button                    | UI-only collapse/expand of the modes row                                                                                      |
+| Imagine                       | Image generation; deferred                                                                                                    |
+| Emoji                         | Emoji picker inserting into the message                                                                                       |
+| `M`                           | Global settings: API keys, username                                                                                           |
+| Speech bubble                 | Past chats                                                                                                                    |
+| `↑` beside Leader             | Picks the leader slot                                                                                                         |
+| Users                         | Single user, private; optional shared password because it's on a LAN                                                          |
+| DM visibility                 | Per-message Visible/Private toggle; private messages and their replies exist only in the target's context, flagged as private |
+| Rapid Roleplay / Fusion model | Slot 1's model                                                                                                                |
+| Distribution                  | Browser + Docker, LAN-accessible from all devices                                                                             |
 
 ### Remaining minor assumptions (change if you disagree)
+
 - A private DM's **reply** is also private (only the user and that model see it).
 - The clock icon is omitted until its purpose is known.
