@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Composer } from './components/Composer';
 import { Header } from './components/Header';
+import { PastChats } from './components/PastChats';
 import { SettingsModal } from './components/SettingsModal';
 import { SlotBar, SlotToolbar } from './components/SlotBar';
 import { Toast } from './components/Toast';
@@ -16,6 +17,7 @@ function idFromHash(): string | undefined {
 export function App() {
   const [sessionId, setSessionId] = useState(idFromHash);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pastChatsOpen, setPastChatsOpen] = useState(false);
   const goneSessionId = useStore((s) => s.goneSessionId);
   const hideSlots = useStore((s) => s.prefs.hideSlots);
   // A chat deleted here or on another device (or a stale link) counts as no chat.
@@ -76,7 +78,14 @@ export function App() {
         <SlotToolbar />
       </div>
       <Transcript />
-      <Composer />
+      <Composer onOpenPastChats={() => setPastChatsOpen(true)} />
+      {pastChatsOpen && (
+        <PastChats
+          onOpenSession={open}
+          onNewSession={() => void createAndOpen()}
+          onClose={() => setPastChatsOpen(false)}
+        />
+      )}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       <Toast />
     </div>

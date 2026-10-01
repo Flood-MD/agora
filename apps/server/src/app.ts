@@ -8,6 +8,7 @@ import {
   createSessionSchema,
   customModelSchema,
   sendMessageSchema,
+  sessionExportSchema,
   updateSessionSchema,
   updateSettingsSchema,
   type SessionEvent,
@@ -72,7 +73,14 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
     return c.body(null, 204);
   });
 
-  api.get('/sessions', (c) => c.json(store.list(running)));
+  api.get('/sessions', (c) => c.json(store.list(running, c.req.query('q') ?? '')));
+
+  // Load: a file written by Save becomes a new chat.
+  api.post('/sessions/import', async (c) => {
+    const input = await parse(c, sessionExportSchema);
+    if (input instanceof Response) return input;
+    return c.json(store.import(input), 201);
+  });
 
   api.post('/sessions', async (c) => {
     const input = await parse(c, createSessionSchema);
@@ -137,6 +145,42 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
       if (err instanceof BusyError) return c.json({ error: err.message }, 409);
       throw err;
     }
+  });
+
+  // Save: the chat as a downloadable JSON file.
+  api.get('/sessions/:id/export', (c) => {
+    const data = store.export(c.req.param('id'));
+    if (!data) return c.json({ error: 'Not found' }, 404);
+    const slug =
+      data.title
+        .replace(/[^\w-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 50) || 'chat';
+    const date = new Date(data.exportedAt).toISOString().slice(0, 10);
+    c.header('Content-Disposition', `attachment; filename="agora-${slug}-${date}.json"`);
+    return c.json(data);
+  });
+
+  const resync = (id: string) => {
+    const session = store.get(id, running(id))!;
+    bus.emit(id, { type: 'snapshot', detail: { session, messages: store.messages(id) } });
+    return session;
+  };
+
+  api.post('/sessions/:id/clear', (c) => {
+    const id = c.req.param('id');
+    if (!store.get(id)) return c.json({ error: 'Not found' }, 404);
+    if (running(id)) return c.json({ error: 'Stop the current responses before clearing.' }, 409);
+    store.clear(id);
+    return c.json(resync(id));
+  });
+
+  api.post('/sessions/:id/restore', (c) => {
+    const id = c.req.param('id');
+    if (!store.get(id)) return c.json({ error: 'Not found' }, 404);
+    if (running(id)) return c.json({ error: 'Stop the current responses before restoring.' }, 409);
+    if (!store.restore(id)) return c.json({ error: 'Nothing to restore.' }, 409);
+    return c.json(resync(id));
   });
 
   api.post('/sessions/:id/stop', (c) => c.json({ stopped: orchestrator.stop(c.req.param('id')) }));

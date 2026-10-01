@@ -50,9 +50,20 @@ export interface Session {
   createdAt: number;
   updatedAt: number;
   running: boolean;
+  /** True when a cleared transcript can be brought back with Restore. */
+  canRestore: boolean;
 }
 
-export type SessionSummary = Omit<Session, 'config'>;
+export interface SessionSummary {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  running: boolean;
+  messageCount: number;
+  /** When listing with a search query: a snippet of the matching message text. */
+  match?: string;
+}
 
 export type MessageStatus = 'streaming' | 'done' | 'error' | 'stopped' | 'interrupted';
 

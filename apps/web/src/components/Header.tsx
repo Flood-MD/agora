@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { api } from '../api';
 import { useStore } from '../store';
-import { ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon } from './icons';
+import { ChevronDownIcon, DownloadIcon, PencilIcon, PlusIcon, TrashIcon, UploadIcon } from './icons';
 
 export function Header({
   onOpenSession,
@@ -16,7 +17,15 @@ export function Header({
   const username = useStore((s) => s.settings?.username ?? 'User');
   const hideSlots = useStore((s) => s.prefs.hideSlots);
   const setPrefs = useStore((s) => s.setPrefs);
+  const importSession = useStore((s) => s.importSession);
   const [menuOpen, setMenuOpen] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const load = async (file: File | undefined) => {
+    if (!file) return;
+    const id = await importSession(file);
+    if (id) onOpenSession(id);
+  };
 
   return (
     <header className="flex items-center gap-2 px-3 pt-3 sm:px-4">
@@ -47,6 +56,38 @@ export function Header({
         title={connected ? 'Live' : 'Reconnecting…'}
       />
       <div className="ml-auto flex items-center gap-2">
+        {session ? (
+          <a
+            className="btn h-9 px-2.5 sm:px-3"
+            href={api.exportUrl(session.id)}
+            download
+            title="Save this chat to a file"
+            aria-label="Save"
+          >
+            <DownloadIcon className="sm:hidden" />
+            <span className="hidden sm:inline">Save</span>
+          </a>
+        ) : null}
+        <button
+          className="btn h-9 px-2.5 sm:px-3"
+          onClick={() => fileInput.current?.click()}
+          title="Load a chat from a file saved with Save"
+          aria-label="Load"
+        >
+          <UploadIcon className="sm:hidden" />
+          <span className="hidden sm:inline">Load</span>
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          data-testid="load-file"
+          onChange={(e) => {
+            void load(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
         <button
           className="btn size-9 p-0 font-bold"
           onClick={onOpenSettings}

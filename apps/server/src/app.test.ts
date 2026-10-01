@@ -295,3 +295,188 @@ describe('roles', () => {
     expect(b.text).toContain('Instructions: "Stay in character."');
   });
 });
+
+describe('clear and restore', () => {
+  it('hides the transcript from the UI and the models, and restore brings it back in place', async () => {
+    const { app } = testApp();
+    const config = councilConfig(mockSlot('a', 'mock/echo', 'Alpha'));
+    const s = (await (await app.request('/api/sessions', json({ config }))).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'first topic' }));
+    await waitIdle(app, s.id);
+
+    const cleared = (await (
+      await app.request(`/api/sessions/${s.id}/clear`, { method: 'POST' })
+    ).json()) as Session;
+    expect(cleared.canRestore).toBe(true);
+    expect((await waitIdle(app, s.id)).messages).toEqual([]);
+
+    // The model no longer sees the cleared conversation.
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'second topic' }));
+    const after = await waitIdle(app, s.id);
+    expect(after.messages.map((m) => m.text)).toEqual([
+      'second topic',
+      expect.stringContaining('1 turns of context'),
+    ]);
+
+    const restored = await app.request(`/api/sessions/${s.id}/restore`, { method: 'POST' });
+    expect(((await restored.json()) as Session).canRestore).toBe(false);
+    const all = (await waitIdle(app, s.id)).messages;
+    expect(all.map((m) => m.author)).toEqual(['user', 'a', 'user', 'a']);
+    expect(all[0]!.text).toBe('first topic');
+    expect(all[2]!.text).toBe('second topic');
+
+    expect((await app.request(`/api/sessions/${s.id}/restore`, { method: 'POST' })).status).toBe(409);
+  });
+
+  it('keeps only the most recent clear', async () => {
+    const { app } = testApp();
+    const s = (await (await app.request('/api/sessions', json({}))).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'one' }));
+    await app.request(`/api/sessions/${s.id}/clear`, { method: 'POST' });
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'two' }));
+    await app.request(`/api/sessions/${s.id}/clear`, { method: 'POST' });
+    await app.request(`/api/sessions/${s.id}/restore`, { method: 'POST' });
+    expect((await waitIdle(app, s.id)).messages.map((m) => m.text)).toEqual(['two']);
+  });
+
+  it('pushes the cleared transcript to every device', async () => {
+    const { app } = testApp();
+    const s = (await (await app.request('/api/sessions', json({}))).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'hello' }));
+    const feed = await app.request(`/api/sessions/${s.id}/events`);
+    await app.request(`/api/sessions/${s.id}/clear`, { method: 'POST' });
+    const events = await readEvents(feed, (es) => es.filter((e) => e.type === 'snapshot').length === 2);
+    const last = events.at(-1)!;
+    expect(last.type === 'snapshot' && last.detail.messages).toEqual([]);
+    expect(last.type === 'snapshot' && last.detail.session.canRestore).toBe(true);
+  });
+
+  it('refuses while models are responding', async () => {
+    const { app } = testApp({ mockDelayMs: 20 });
+    const s = (await (
+      await app.request('/api/sessions', json({ config: councilConfig(mockSlot('a', 'mock/slow')) }))
+    ).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'go' }));
+    expect((await app.request(`/api/sessions/${s.id}/clear`, { method: 'POST' })).status).toBe(409);
+    await app.request(`/api/sessions/${s.id}/stop`, { method: 'POST' });
+    await waitIdle(app, s.id);
+  });
+});
+
+describe('save and load', () => {
+  it('round-trips a chat through the export file into a new chat', async () => {
+    const { app } = testApp();
+    const config = {
+      ...councilConfig(
+        { ...mockSlot('a', 'mock/echo', 'Alpha'), customName: 'Judge' },
+        mockSlot('b', 'mock/error'),
+      ),
+      systemPrompt: 'Court is in session.',
+    };
+    const s = (await (await app.request('/api/sessions', json({ config }))).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'Opening statements' }));
+    const original = await waitIdle(app, s.id);
+
+    const res = await app.request(`/api/sessions/${s.id}/export`);
+    expect(res.headers.get('Content-Disposition')).toMatch(
+      /^attachment; filename="agora-Opening-statements-\d{4}-\d{2}-\d{2}\.json"$/,
+    );
+    const file = await res.json();
+    expect(file).toMatchObject({ format: 'agora.session', version: 1, title: 'Opening statements', config });
+
+    const imported = (await (await app.request('/api/sessions/import', json(file))).json()) as Session;
+    expect(imported.id).not.toBe(s.id);
+    expect(imported.title).toBe('Opening statements');
+    expect(imported.config).toEqual(config);
+    const copy = await waitIdle(app, imported.id);
+    const strip = (m: Message) => [m.author, m.authorName, m.text, m.status, m.error, m.round, m.usage];
+    expect(copy.messages.map(strip)).toEqual(original.messages.map(strip));
+    expect(copy.messages.map((m) => m.seq)).toEqual([1, 2, 3]);
+
+    // The copy keeps working as a normal chat.
+    await app.request(`/api/sessions/${imported.id}/messages`, json({ text: 'Next' }));
+    expect((await waitIdle(app, imported.id)).messages).toHaveLength(6);
+  });
+
+  it('marks a reply that was still streaming as interrupted', async () => {
+    const { app } = testApp();
+    const file = {
+      format: 'agora.session',
+      version: 1,
+      exportedAt: Date.now(),
+      title: 'Half done',
+      config: councilConfig(mockSlot('a')),
+      messages: [
+        {
+          round: 1,
+          author: 'user',
+          authorName: 'Sam',
+          text: 'Hi',
+          status: 'done',
+          audience: 'all',
+          createdAt: 1,
+        },
+        {
+          round: 1,
+          author: 'a',
+          authorName: 'a',
+          text: 'Hel',
+          status: 'streaming',
+          audience: 'all',
+          createdAt: 2,
+        },
+      ],
+    };
+    const imported = (await (await app.request('/api/sessions/import', json(file))).json()) as Session;
+    const reply = (await waitIdle(app, imported.id)).messages[1]!;
+    expect(reply.status).toBe('interrupted');
+    expect(reply.error).toMatch(/still generating/);
+  });
+
+  it('rejects files that are not Agora exports', async () => {
+    const { app } = testApp();
+    for (const body of [{}, { format: 'other', version: 1 }, { format: 'agora.session', version: 2 }]) {
+      expect((await app.request('/api/sessions/import', json(body))).status).toBe(400);
+    }
+    expect((await app.request('/api/sessions')).status).toBe(200);
+    expect(((await (await app.request('/api/sessions')).json()) as unknown[]).length).toBe(0);
+  });
+});
+
+describe('past chats', () => {
+  it('lists chats with message counts and finds them by title or message text', async () => {
+    const { app } = testApp();
+    const make = async (text: string) => {
+      const s = (await (await app.request('/api/sessions', json({}))).json()) as Session;
+      await app.request(`/api/sessions/${s.id}/messages`, json({ text }));
+      return s.id;
+    };
+    const pasta = await make('Best pasta recipe?');
+    const budget = await make('Plan a budget: 50% savings, rest_of it spent on Pasta night');
+    const other = await make('Something else entirely');
+
+    type Summary = { id: string; messageCount: number; match?: string };
+    const list = async (q = '') =>
+      (await (
+        await app.request(`/api/sessions${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+      ).json()) as Summary[];
+
+    const all = await list();
+    expect(all.map((s) => s.id)).toEqual([other, budget, pasta]);
+    expect(all[0]!.messageCount).toBe(1);
+
+    expect((await list('pasta')).map((s) => s.id)).toEqual([budget, pasta]);
+    expect((await list('pasta')).find((s) => s.id === budget)!.match).toContain('Pasta night');
+    // LIKE wildcards are matched literally.
+    expect((await list('50%')).map((s) => s.id)).toEqual([budget]);
+    expect((await list('t_of')).map((s) => s.id)).toEqual([budget]);
+    expect(await list('%')).toHaveLength(1);
+    expect(await list('nothing like this')).toEqual([]);
+
+    // Cleared messages are not searchable.
+    await app.request(`/api/sessions/${other}/clear`, { method: 'POST' });
+    expect(await list('entirely')).toHaveLength(1); // still matches by title
+    await app.request(`/api/sessions/${other}`, json({ title: 'Renamed' }, 'PATCH'));
+    expect(await list('entirely')).toEqual([]);
+  });
+});

@@ -35,6 +35,8 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX messages_session_seq ON messages(session_id, seq);
   `,
+  // Clear hides messages instead of deleting them, so Restore can bring the last cleared transcript back.
+  `ALTER TABLE messages ADD COLUMN cleared INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** Opens (and migrates) the database. Pass `':memory:'` for tests. */

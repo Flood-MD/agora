@@ -63,7 +63,7 @@ test('stop ends a running round and errors stay per model', async ({ page }) => 
     .getByRole('button', { name: /Hello council/ })
     .first()
     .click();
-  await page.getByRole('menu').getByRole('button', { name: 'New chat' }).click();
+  await page.getByRole('menu').getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.getByTestId('model-message')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /New chat/ }).first()).toBeVisible();
 
@@ -115,7 +115,7 @@ test('a model the provider does not list can be added by ID and used', async ({ 
 test('roles: system prompt, custom names and slot prompts reach the models', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('session-menu').click();
-  await page.getByRole('menu').getByRole('button', { name: 'New chat' }).click();
+  await page.getByRole('menu').getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.getByTestId('session-menu')).toHaveText('New chat');
   const removeButtons = page.getByRole('button', { name: /^Remove / });
   while ((await removeButtons.count()) > 0) await removeButtons.first().click();
@@ -163,4 +163,59 @@ test('roles: system prompt, custom names and slot prompts reach the models', asy
   await roles.getByRole('button', { name: 'Clear All' }).click();
   await roles.getByRole('button', { name: 'Save & Close' }).click();
   await expect(page.getByRole('button', { name: 'Remove Mock Echo' })).toBeVisible();
+});
+
+test('clear and restore, save and load, and past chats search', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('session-menu').click();
+  await page.getByRole('menu').getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByTestId('session-menu')).toHaveText('New chat');
+  const removeButtons = page.getByRole('button', { name: /^Remove / });
+  while ((await removeButtons.count()) > 0) await removeButtons.first().click();
+  await addModel(page, 'Mock Echo');
+
+  await page.getByLabel('Message').fill('Quarterly zebra migration report');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-testid=model-message][data-status=done]')).toHaveCount(1);
+
+  // Clear hides the conversation; Restore brings it back.
+  await expect(page.getByRole('button', { name: 'Restore' })).toBeHidden();
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.getByTestId('user-message')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByTestId('user-message')).toHaveText('Quarterly zebra migration report');
+  await expect(page.getByRole('button', { name: 'Restore' })).toBeHidden();
+
+  // Save downloads the chat; Load turns the file into a new chat.
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Save' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^agora-Quarterly-zebra-migration-report-.*\.json$/);
+  const savedUrl = page.url();
+  await page.getByTestId('load-file').setInputFiles(await download.path());
+  await expect(page).not.toHaveURL(savedUrl);
+  await expect(page.getByTestId('user-message')).toHaveText('Quarterly zebra migration report');
+  await expect(page.locator('[data-testid=model-message]')).toContainText("I'm Mock Echo");
+
+  // A file that isn't an Agora export is rejected with a message.
+  await page.getByTestId('load-file').setInputFiles({
+    name: 'notes.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"hello": "world"}'),
+  });
+  await expect(page.getByRole('status')).toContainText('not a chat saved from Agora');
+
+  // Past chats finds both copies by message text and opens one.
+  await page.getByRole('button', { name: 'Past chats' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Past chats' });
+  await dialog.getByLabel('Search chats').fill('zebra');
+  await expect(dialog.getByRole('listitem')).toHaveCount(2);
+  await dialog.getByLabel('Search chats').fill('no such words anywhere');
+  await expect(dialog).toContainText('No chats mention');
+  await dialog.getByLabel('Search chats').fill('');
+  await expect(dialog.getByRole('listitem').first()).toBeVisible();
+  await dialog.getByRole('listitem').filter({ hasText: 'Hello council' }).getByRole('button').first().click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId('user-message').first()).toHaveText('Hello council');
 });
