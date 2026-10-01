@@ -40,6 +40,20 @@ const MIGRATIONS: string[] = [
   // Messages sent to one model (`target`) and how a reply was produced (`kind`: leader, fusion, self-chat).
   `ALTER TABLE messages ADD COLUMN target TEXT;
    ALTER TABLE messages ADD COLUMN kind TEXT;`,
+  // Attachments (files, folders, repositories, transcripts, images) shared with every model in a chat.
+  `CREATE TABLE context_items (
+     id         TEXT PRIMARY KEY,
+     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+     kind       TEXT NOT NULL,
+     title      TEXT NOT NULL,
+     text       TEXT NOT NULL,
+     media_type TEXT,
+     data       TEXT,
+     tokens     INTEGER NOT NULL,
+     note       TEXT,
+     created_at INTEGER NOT NULL
+   );
+   CREATE INDEX context_items_session ON context_items(session_id, created_at);`,
 ];
 
 /** Opens (and migrates) the database. Pass `':memory:'` for tests. */

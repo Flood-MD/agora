@@ -9,8 +9,9 @@ Providers: **OpenRouter, Anthropic, OpenAI, Hugging Face**, plus any OpenAI-comp
 
 > Status: early. Group chat, model picker (including models added by ID), Roles (system prompt, custom names,
 > slot prompts), settings, past chats with search, Save/Load to a file, Clear/Restore, live multi-device sync,
-> and the conversation modes (Leader, Fusion, Self-Chat, Regenerate, visible or private messages to one model)
-> work. Attachments and web search are next — see [docs/PLAN.md](docs/PLAN.md).
+> the conversation modes (Leader, Fusion, Self-Chat, Regenerate, visible or private messages to one model),
+> attachments (files, folders, GitHub, YouTube, transcription) and web search work. Rapid Roleplay and polish
+> are next — see [docs/PLAN.md](docs/PLAN.md).
 
 ## Run it on your LAN with Docker
 

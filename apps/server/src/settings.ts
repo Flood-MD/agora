@@ -54,8 +54,8 @@ export class Settings {
     return this.config.envCustomBaseUrl || this.get('customBaseUrl') || '';
   }
 
-  /** The key to use for a provider: environment first, then one saved in the app. */
-  key(provider: KeyedProvider): string | undefined {
+  /** The key to use for a provider (or GitHub): environment first, then one saved in the app. */
+  key(provider: KeyedProvider | 'github'): string | undefined {
     return this.config.envKeys[provider] || this.get(`key.${provider}`) || undefined;
   }
 
@@ -65,12 +65,12 @@ export class Settings {
     return Boolean(this.key(provider));
   }
 
-  private status(provider: KeyedProvider): ProviderStatus {
+  private status(provider: KeyedProvider | 'github'): ProviderStatus {
     const env = this.config.envKeys[provider];
     const app = this.get(`key.${provider}`);
     const key = env || app;
     return {
-      configured: this.isConfigured(provider),
+      configured: provider === 'github' ? Boolean(key) : this.isConfigured(provider),
       source: env ? 'env' : app ? 'app' : null,
       hint: key ? maskKey(key) : null,
     };
@@ -83,6 +83,8 @@ export class Settings {
       providers: Object.fromEntries(
         KEYED_PROVIDERS.map((p) => [p, this.status(p)]),
       ) as SettingsView['providers'],
+      github: this.status('github'),
+      transcription: Boolean(this.key('openai') || this.key('huggingface') || this.config.mock),
       mockEnabled: this.config.mock,
     };
   }
@@ -131,6 +133,7 @@ export class Settings {
       this.set(`key.${p}`, value);
       if (!changed.includes(p)) changed.push(p);
     }
+    if (input.keys?.github !== undefined) this.set('key.github', input.keys.github);
     return changed;
   }
 }

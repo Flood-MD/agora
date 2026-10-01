@@ -47,6 +47,29 @@ export interface SessionConfig {
   leaderSlotId?: string;
   /** Fusion mode: after everyone answers, slot 1's model merges the answers into one. */
   fusion?: boolean;
+  /** Let models search the web (OpenRouter, Anthropic and OpenAI only). */
+  webSearch?: boolean;
+}
+
+export const CONTEXT_KINDS = ['file', 'folder', 'image', 'github', 'youtube', 'transcript'] as const;
+export type ContextKind = (typeof CONTEXT_KINDS)[number];
+
+/** Material attached to a chat (Attach menu). Every model sees it, ahead of the conversation. */
+export interface ContextItem {
+  id: string;
+  sessionId: string;
+  kind: ContextKind;
+  title: string;
+  /** Extracted text (empty for images). */
+  text: string;
+  /** For images: media type and base64 data. */
+  mediaType?: string;
+  data?: string;
+  /** Rough token count. */
+  tokens: number;
+  /** e.g. "34 files, 6 skipped" for a folder or repository. */
+  note?: string;
+  createdAt: number;
 }
 
 export interface Session {
@@ -108,13 +131,15 @@ export type MessageKind = 'leader' | 'fusion' | 'self-chat';
 export interface SessionDetail {
   session: Session;
   messages: Message[];
+  context: ContextItem[];
 }
 
 export type SessionEvent =
   | { type: 'message'; message: Message }
   | { type: 'session'; session: Session }
   | { type: 'snapshot'; detail: SessionDetail }
-  | { type: 'deleted'; sessionId: string };
+  | { type: 'deleted'; sessionId: string }
+  | { type: 'context'; sessionId: string; items: ContextItem[] };
 
 export interface ProviderStatus {
   configured: boolean;
@@ -128,6 +153,10 @@ export interface SettingsView {
   username: string;
   customBaseUrl: string;
   providers: Record<Exclude<ProviderId, 'mock'>, ProviderStatus>;
+  /** Optional GitHub token for private repositories and higher rate limits. */
+  github: ProviderStatus;
+  /** Whether audio can be transcribed (needs an OpenAI or Hugging Face key). */
+  transcription: boolean;
   mockEnabled: boolean;
 }
 

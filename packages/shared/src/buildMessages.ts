@@ -1,8 +1,71 @@
-import { slotDisplayName, type Message, type SessionConfig, type Slot } from './types';
+import { slotDisplayName, type ContextItem, type Message, type SessionConfig, type Slot } from './types';
+
+export type ContentPart = { type: 'text'; text: string } | { type: 'image'; mediaType: string; data: string };
 
 export interface ChatTurn {
   role: 'user' | 'assistant';
-  content: string;
+  /** Plain text, or text and images (only the shared-context turn carries images). */
+  content: string | ContentPart[];
+}
+
+/** Rough token cost of an image, for budgeting only. */
+export const IMAGE_TOKENS = 1_500;
+
+export function turnText(content: ChatTurn['content']): string {
+  return typeof content === 'string'
+    ? content
+    : content.map((p) => (p.type === 'text' ? p.text : '[image]')).join('\n\n');
+}
+
+function turnTokens(content: ChatTurn['content']): number {
+  return typeof content === 'string'
+    ? estimateTokens(content)
+    : content.reduce((n, p) => n + (p.type === 'text' ? estimateTokens(p.text) : IMAGE_TOKENS), 0);
+}
+
+function escapeAttr(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/**
+ * The shared-context turn: every attachment, ahead of the conversation. Images go in as images for
+ * models that can see them, and as a short note for the rest.
+ */
+export function contextTurn(items: ContextItem[], username: string, vision: boolean): ChatTurn | undefined {
+  if (!items.length) return undefined;
+  const parts: ContentPart[] = [
+    {
+      type: 'text',
+      text: `Shared context: material ${username} attached to this chat. Every participant can see it. Refer to it when relevant.`,
+    },
+  ];
+  for (const item of items) {
+    const attrs = `title="${escapeAttr(item.title)}" kind="${item.kind}"`;
+    if (item.kind === 'image' && item.data && item.mediaType) {
+      if (vision) {
+        parts.push({ type: 'text', text: `<image ${attrs}>` });
+        parts.push({ type: 'image', mediaType: item.mediaType, data: item.data });
+      } else {
+        parts.push({
+          type: 'text',
+          text: `<image ${attrs}>(You can't view images; ask the others if it matters.)</image>`,
+        });
+      }
+    } else {
+      parts.push({ type: 'text', text: `<document ${attrs}>\n${item.text}\n</document>` });
+    }
+  }
+  // Collapse adjacent text parts so text-only models get one plain string.
+  const merged: ContentPart[] = [];
+  for (const p of parts) {
+    const last = merged[merged.length - 1];
+    if (p.type === 'text' && last?.type === 'text') last.text += `\n\n${p.text}`;
+    else merged.push({ ...p });
+  }
+  return {
+    role: 'user',
+    content: merged.length === 1 && merged[0]!.type === 'text' ? merged[0]!.text : merged,
+  };
 }
 
 export interface BuiltPrompt {
@@ -24,6 +87,10 @@ export interface BuildInput {
   reserveForOutput?: number;
   /** Mode-specific instructions (leader, fusion, self-chat), appended to the system prompt. */
   instructions?: string;
+  /** Attachments shared with every model. */
+  context?: ContextItem[];
+  /** Whether the slot's model accepts images. */
+  vision?: boolean;
 }
 
 const OPENING_TURN = '(The group chat has just started.)';
@@ -86,12 +153,18 @@ function toTurn(message: Message, slot: Slot, config: SessionConfig, username: s
   return { role: 'user', content: `[${label}]: ${message.text}` };
 }
 
+function toParts(content: ChatTurn['content']): ContentPart[] {
+  return typeof content === 'string' ? [{ type: 'text', text: content }] : content;
+}
+
 function mergeAdjacent(turns: ChatTurn[]): ChatTurn[] {
   const out: ChatTurn[] = [];
   for (const t of turns) {
     const last = out[out.length - 1];
-    if (last && last.role === t.role) last.content += `\n\n${t.content}`;
-    else out.push({ ...t });
+    if (!last || last.role !== t.role) out.push({ ...t });
+    else if (typeof last.content === 'string' && typeof t.content === 'string')
+      last.content += `\n\n${t.content}`;
+    else last.content = [...toParts(last.content), ...toParts(t.content)];
   }
   return out;
 }
@@ -117,19 +190,26 @@ export function buildMessages(input: BuildInput): BuiltPrompt {
     .join('\n\n');
   let turns = visible.map((m) => toTurn(m, slot, config, username));
 
+  const shared = contextTurn(input.context ?? [], username, input.vision ?? false);
+
   let trimmed = false;
   if (input.contextLength) {
-    const budget = input.contextLength - (input.reserveForOutput ?? 0) - estimateTokens(system) - 64;
-    let total = turns.reduce((n, t) => n + estimateTokens(t.content) + 4, 0);
-    // Drop the oldest turns first, but always keep the most recent one.
+    const budget =
+      input.contextLength -
+      (input.reserveForOutput ?? 0) -
+      estimateTokens(system) -
+      (shared ? turnTokens(shared.content) : 0) -
+      64;
+    let total = turns.reduce((n, t) => n + turnTokens(t.content) + 4, 0);
+    // Drop the oldest turns first, but always keep the most recent one. Attachments are never dropped.
     while (total > budget && turns.length > 1) {
-      total -= estimateTokens(turns[0]!.content) + 4;
+      total -= turnTokens(turns[0]!.content) + 4;
       turns = turns.slice(1);
       trimmed = true;
     }
   }
 
-  const messages = mergeAdjacent(turns);
+  const messages = mergeAdjacent(shared ? [shared, ...turns] : turns);
   if (messages[0]?.role !== 'user') messages.unshift({ role: 'user', content: OPENING_TURN });
   if (messages[messages.length - 1]!.role !== 'user') messages.push({ role: 'user', content: CONTINUE_TURN });
   return { system, messages, trimmed };

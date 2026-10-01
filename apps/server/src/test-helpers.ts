@@ -14,6 +14,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       openrouter: undefined,
       huggingface: undefined,
       custom: undefined,
+      github: undefined,
     },
     envCustomBaseUrl: undefined,
     ...overrides,

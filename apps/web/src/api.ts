@@ -1,4 +1,5 @@
 import type {
+  ContextItem,
   CustomModelInput,
   Message,
   ModelInfo,
@@ -66,6 +67,30 @@ export const api = {
       json: { rounds, topic },
     }),
   regenerate: (id: string) => request<void>(`/sessions/${id}/regenerate`, { method: 'POST' }),
+  /** Uploads files; with `folder`, file names are relative paths and the server makes one attachment. */
+  uploadFiles: (id: string, files: { file: File; name: string }[], folder?: string) => {
+    const form = new FormData();
+    for (const f of files) form.append('files', f.file, f.name);
+    if (folder) form.append('folder', folder);
+    return request<{ items: ContextItem[]; skipped?: string[] }>(`/sessions/${id}/context/files`, {
+      method: 'POST',
+      body: form,
+    });
+  },
+  importGithub: (id: string, repo: string) =>
+    request<{ items: ContextItem[] }>(`/sessions/${id}/context/github`, { method: 'POST', json: { repo } }),
+  importYoutube: (id: string, url: string) =>
+    request<{ items: ContextItem[] }>(`/sessions/${id}/context/youtube`, { method: 'POST', json: { url } }),
+  transcribe: (id: string, audio: Blob, name: string) => {
+    const form = new FormData();
+    form.append('audio', audio, name);
+    return request<{ items: ContextItem[] }>(`/sessions/${id}/context/transcribe`, {
+      method: 'POST',
+      body: form,
+    });
+  },
+  removeContext: (id: string, itemId: string) =>
+    request<void>(`/sessions/${id}/context/${itemId}`, { method: 'DELETE' }),
   stop: (id: string) => request<{ stopped: boolean }>(`/sessions/${id}/stop`, { method: 'POST' }),
   eventsUrl: (id: string) => `/api/sessions/${id}/events`,
 };

@@ -1,7 +1,9 @@
 import { slotDisplayName } from '@agora/shared';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { ChatsIcon, RefreshIcon, SendIcon, StopIcon } from './icons';
+import { AttachMenu } from './AttachMenu';
+import { ContextChips } from './ContextChips';
+import { ChatsIcon, GlobeIcon, RefreshIcon, SendIcon, StopIcon } from './icons';
 import { ModesRow } from './ModesRow';
 
 const DRAFT_KEY = 'agora.draft.';
@@ -10,6 +12,8 @@ export function Composer({ onOpenPastChats }: { onOpenPastChats: () => void }) {
   const session = useStore((s) => s.session);
   const send = useStore((s) => s.send);
   const stop = useStore((s) => s.stop);
+  const updateConfig = useStore((s) => s.updateConfig);
+  const webSearch = session?.config.webSearch ?? false;
   const regenerate = useStore((s) => s.regenerate);
   const privateDm = useStore((s) => s.prefs.privateDm);
   const hasMessages = useStore((s) => s.messages.length > 0);
@@ -65,15 +69,25 @@ export function Composer({ onOpenPastChats }: { onOpenPastChats: () => void }) {
 
   return (
     <div className="px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:px-4">
+      <ContextChips />
       <div className="mx-auto flex max-w-3xl items-end gap-2">
-        <div className="flex shrink-0 flex-col gap-1.5">
+        <div className="grid shrink-0 grid-cols-2 gap-1.5">
           <button
-            className="btn size-9 rounded-lg p-0"
+            className="btn col-start-2 size-9 rounded-lg p-0"
             onClick={onOpenPastChats}
             title="Past chats"
             aria-label="Past chats"
           >
             <ChatsIcon size={16} />
+          </button>
+          <button
+            className={`btn size-9 rounded-lg p-0 ${webSearch ? 'btn-primary' : ''}`}
+            onClick={() => updateConfig((c) => ({ ...c, webSearch: !c.webSearch }))}
+            aria-pressed={webSearch}
+            aria-label="Web search"
+            title={`Web search ${webSearch ? 'on' : 'off'}: OpenRouter, Anthropic and OpenAI models can search the web. Hugging Face and custom endpoints answer without it.`}
+          >
+            <GlobeIcon size={16} />
           </button>
           <button
             className="btn size-9 rounded-lg p-0"
@@ -108,24 +122,27 @@ export function Composer({ onOpenPastChats }: { onOpenPastChats: () => void }) {
           }}
           aria-label="Message"
         />
-        {running ? (
-          <button
-            className="btn btn-danger size-11 rounded-xl p-0"
-            onClick={() => void stop()}
-            aria-label="Stop"
-          >
-            <StopIcon />
-          </button>
-        ) : (
-          <button
-            className="btn size-11 rounded-xl p-0"
-            onClick={() => void submit()}
-            disabled={!text.trim() || sending || !session}
-            aria-label="Send"
-          >
-            <SendIcon />
-          </button>
-        )}
+        <div className="flex shrink-0 flex-col gap-1.5">
+          <AttachMenu />
+          {running ? (
+            <button
+              className="btn btn-danger size-9 rounded-lg p-0"
+              onClick={() => void stop()}
+              aria-label="Stop"
+            >
+              <StopIcon />
+            </button>
+          ) : (
+            <button
+              className="btn size-9 rounded-lg p-0"
+              onClick={() => void submit()}
+              disabled={!text.trim() || sending || !session}
+              aria-label="Send"
+            >
+              <SendIcon size={16} />
+            </button>
+          )}
+        </div>
       </div>
       <ModesRow
         target={target}
