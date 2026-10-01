@@ -1,8 +1,16 @@
-import { MAX_SLOTS, nextSlotColor, slotDisplayName, type ModelInfo, type Slot } from '@agora/shared';
+import {
+  hasRoles,
+  MAX_SLOTS,
+  nextSlotColor,
+  slotDisplayName,
+  type ModelInfo,
+  type Slot,
+} from '@agora/shared';
 import { useState } from 'react';
 import { useStore } from '../store';
 import { PlusIcon, XIcon } from './icons';
 import { ModelPicker } from './ModelPicker';
+import { RolesModal } from './RolesModal';
 
 function newSlotId() {
   return Math.random().toString(36).slice(2, 10);
@@ -91,6 +99,24 @@ export function SlotBar() {
           onClose={() => setPicking(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** Row under the slot cards: council-wide tools. */
+export function SlotToolbar() {
+  const rolesActive = useStore((s) => (s.session ? hasRoles(s.session.config) : false));
+  const [rolesOpen, setRolesOpen] = useState(false);
+
+  return (
+    <div className="flex items-center gap-2 px-3 pt-2 sm:px-4">
+      <button className="btn relative px-2.5 py-1 text-xs" onClick={() => setRolesOpen(true)}>
+        Roles
+        {rolesActive && (
+          <span className="size-1.5 rounded-full bg-blue-400" title="Prompts or custom names are active" />
+        )}
+      </button>
+      {rolesOpen && <RolesModal onClose={() => setRolesOpen(false)} />}
     </div>
   );
 }

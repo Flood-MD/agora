@@ -111,3 +111,56 @@ test('a model the provider does not list can be added by ID and used', async ({ 
   await dialog.getByRole('button', { name: 'Remove custom model Brand New' }).click();
   await expect(dialog).toContainText('No models match');
 });
+
+test('roles: system prompt, custom names and slot prompts reach the models', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('session-menu').click();
+  await page.getByRole('menu').getByRole('button', { name: 'New chat' }).click();
+  await expect(page.getByTestId('session-menu')).toHaveText('New chat');
+  const removeButtons = page.getByRole('button', { name: /^Remove / });
+  while ((await removeButtons.count()) > 0) await removeButtons.first().click();
+  await addModel(page, 'Mock Echo');
+  await addModel(page, 'Mock Chatty');
+
+  await page.getByRole('button', { name: 'Roles' }).click();
+  const roles = page.getByRole('dialog', { name: 'Roles' });
+  await roles.getByLabel('System prompt for all models').fill('Speak like a courtroom drama.');
+
+  await roles.getByRole('tab', { name: 'Custom Names' }).click();
+  await roles.getByPlaceholder('Custom name for Mock Echo…').fill('Judge');
+  await roles.getByPlaceholder('Custom name for Mock Chatty…').fill('Defense');
+  await roles.getByLabel('Show model names underneath').check();
+
+  await roles.getByRole('tab', { name: 'Slot Prompts' }).click();
+  await expect(roles).toContainText('Slot 1: Judge');
+  await roles.getByPlaceholder('System prompt for slot 1…').fill('You preside over the trial.');
+
+  // Cancel with unsaved edits asks first; dismissing keeps the panel open.
+  page.once('dialog', (d) => void d.dismiss());
+  await roles.getByRole('button', { name: 'Cancel' }).click();
+  await expect(roles).toBeVisible();
+
+  await roles.getByRole('button', { name: 'Save & Close' }).click();
+  await expect(roles).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Remove Judge' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove Defense' })).toBeVisible();
+
+  await page.getByLabel('Message').fill('Order in the court');
+  await page.keyboard.press('Enter');
+  const replies = page.locator('[data-testid=model-message][data-status=done]');
+  await expect(replies).toHaveCount(2);
+  await expect(replies.nth(0)).toContainText("I'm Judge");
+  await expect(replies.nth(0)).toContainText(
+    'Instructions: "Speak like a courtroom drama. / You preside over the trial."',
+  );
+  await expect(replies.nth(1)).toContainText("I'm Defense");
+  await expect(replies.nth(1)).toContainText('Instructions: "Speak like a courtroom drama."');
+  // Judge sees Defense under its custom name next round; model names are shown under custom names.
+  await expect(replies.nth(0).locator('header')).toContainText('Mock Echo');
+
+  // Clear All resets everything after saving.
+  await page.getByRole('button', { name: 'Roles' }).click();
+  await roles.getByRole('button', { name: 'Clear All' }).click();
+  await roles.getByRole('button', { name: 'Save & Close' }).click();
+  await expect(page.getByRole('button', { name: 'Remove Mock Echo' })).toBeVisible();
+});

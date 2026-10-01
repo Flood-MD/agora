@@ -256,9 +256,9 @@ stored with the session (files under `/data/uploads`).
 | M8    | Polish: optional password, PWA, cost display, background, a11y, optional HTTPS compose, README    | Clean-clone install works following README only                                       |
 | Later | Imagine (image generation)                                                                        | —                                                                                     |
 
-**Status:** M0–M2 implemented. Also done early: the core of `buildMessages` (roster, private-message filtering,
-truncation) with unit tests, the session switcher, and Hide. Not yet verified: live calls to the real provider
-APIs, and a `docker build` (no Docker daemon was available while building M0–M2).
+**Status:** M0–M3 implemented (Rapid Roleplay, originally a Roles tab, stays in M7). Also done early: the session
+switcher, Hide, and adding models by ID. Docker build and live provider calls have been verified on a real LAN
+host.
 
 **Testing:** Vitest for `packages/shared` (prompt building, role mapping, audience filtering, truncation, Anthropic
 alternation), provider adapters against recorded fixtures (`msw`), orchestrator tests with the mock provider, and

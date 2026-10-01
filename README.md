@@ -7,8 +7,9 @@ name and prompt, and the server runs the conversation so every device on your ne
 Providers: **OpenRouter, Anthropic, OpenAI, Hugging Face**, plus any OpenAI-compatible server
 (Ollama, LM Studio, vLLM…).
 
-> Status: early. Group chat, model picker, settings, chat history and live multi-device sync work.
-> Roles, Fusion, Leader, Self-Chat, private messages and attachments are next — see [docs/PLAN.md](docs/PLAN.md).
+> Status: early. Group chat, model picker (including models added by ID), Roles (system prompt, custom names,
+> slot prompts), settings, chat history and live multi-device sync work. Fusion, Leader, Self-Chat, private
+> messages and attachments are next — see [docs/PLAN.md](docs/PLAN.md).
 
 ## Run it on your LAN with Docker
 
