@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+dist
+data
+playwright-report
+test-results
+LICENSE
+e2e/.data

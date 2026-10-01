@@ -1,0 +1,58 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
+export type Db = DatabaseSync;
+
+const MIGRATIONS: string[] = [
+  `
+  CREATE TABLE settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  CREATE TABLE sessions (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    config     TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE messages (
+    id          TEXT PRIMARY KEY,
+    session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq         INTEGER NOT NULL,
+    round       INTEGER NOT NULL,
+    author      TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    model       TEXT,
+    text        TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    error       TEXT,
+    audience    TEXT NOT NULL,
+    usage       TEXT,
+    latency_ms  INTEGER,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX messages_session_seq ON messages(session_id, seq);
+  `,
+];
+
+/** Opens (and migrates) the database. Pass `':memory:'` for tests. */
+export function openDb(file: string): Db {
+  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
+  const db = new DatabaseSync(file);
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  const { user_version: version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
+  for (let v = version; v < MIGRATIONS.length; v++) {
+    db.exec('BEGIN');
+    try {
+      db.exec(MIGRATIONS[v]!);
+      db.exec(`PRAGMA user_version = ${v + 1}`);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  return db;
+}
