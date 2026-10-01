@@ -25,6 +25,7 @@ export function Header({
           className="flex max-w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-lg font-bold hover:bg-panel-2"
           onClick={() => setMenuOpen((o) => !o)}
           aria-haspopup="menu"
+          data-testid="session-menu"
           aria-expanded={menuOpen}
         >
           <span className="truncate">{session?.title ?? 'Agora'}</span>

@@ -273,3 +273,25 @@ describe('custom models', () => {
     }
   });
 });
+
+describe('roles', () => {
+  it('sends the system prompt, slot prompt and custom names to each model', async () => {
+    const { app } = testApp();
+    const config = {
+      ...councilConfig(
+        { ...mockSlot('a', 'mock/echo', 'Alpha'), customName: 'Detective', prompt: 'You investigate.' },
+        mockSlot('b', 'mock/echo', 'Beta'),
+      ),
+      systemPrompt: 'Stay in character.',
+    };
+    const s = (await (await app.request('/api/sessions', json({ config }))).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'Who did it?' }));
+    const detail = await waitIdle(app, s.id);
+    const [, a, b] = detail.messages as [Message, Message, Message];
+    expect(a.authorName).toBe('Detective');
+    expect(a.text).toContain("I'm Detective");
+    expect(a.text).toContain('Instructions: "Stay in character. / You investigate."');
+    expect(b.text).toContain("I'm Beta");
+    expect(b.text).toContain('Instructions: "Stay in character."');
+  });
+});

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Composer } from './components/Composer';
 import { Header } from './components/Header';
 import { SettingsModal } from './components/SettingsModal';
-import { SlotBar } from './components/SlotBar';
+import { SlotBar, SlotToolbar } from './components/SlotBar';
 import { Toast } from './components/Toast';
 import { Transcript } from './components/Transcript';
 import { useStore } from './store';
@@ -73,6 +73,7 @@ export function App() {
       />
       <div className={hideSlots ? 'hidden' : 'pt-3'}>
         <SlotBar />
+        <SlotToolbar />
       </div>
       <Transcript />
       <Composer />

@@ -27,6 +27,12 @@ export class MockProvider implements Provider {
     const last = req.messages.at(-1)?.content.split('\n\n').at(-1) ?? '';
     const quoted = last.length > 80 ? `${last.slice(0, 80)}…` : last;
     let text = `I'm ${name}. I see: "${quoted}" (${req.messages.length} turns of context).`;
+    // Echo any instructions placed before the roster, so tests can see prompts reach the model.
+    const instructions = req.system
+      .slice(0, Math.max(0, req.system.search(/^You are .+?, an AI participant/m)))
+      .trim()
+      .replace(/\s*\n+\s*/g, ' / ');
+    if (instructions) text += ` Instructions: "${instructions.slice(0, 160)}".`;
     if (req.model === 'chatty') text += ` ${FILLER} ${FILLER}`;
     const delay = req.model === 'slow' ? this.delayMs * 8 : this.delayMs;
     let out = 0;
