@@ -14,6 +14,7 @@ import {
   type Slot,
   type Step,
 } from '@agora/shared';
+import type { ContextStore } from './contextStore';
 import type { EventBus } from './events';
 import type { Providers } from './providers';
 import type { SessionStore } from './sessions';
@@ -66,6 +67,7 @@ export class Orchestrator {
     private providers: Providers,
     private settings: Settings,
     private bus: EventBus,
+    private context: ContextStore,
   ) {}
 
   isRunning(sessionId: string): boolean {
@@ -129,7 +131,11 @@ export class Orchestrator {
     this.store.deleteMessages(inRound.filter((m) => m.author !== 'user').map((m) => m.id));
     this.bus.emit(session.id, {
       type: 'snapshot',
-      detail: { session: this.store.get(session.id, true)!, messages: this.store.messages(session.id) },
+      detail: {
+        session: this.store.get(session.id, true)!,
+        messages: this.store.messages(session.id),
+        context: this.context.list(session.id),
+      },
     });
     void this.run(session.id, [
       user
@@ -161,6 +167,8 @@ export class Orchestrator {
     const controller = new AbortController();
     this.runs.set(sessionId, controller);
     this.emitSession(sessionId);
+    // Load model catalogues (cached for hours) so context windows and image support are known.
+    await this.providers.catalog().catch(() => undefined);
     try {
       for (const plan of rounds) {
         const initial = this.store.get(sessionId);
@@ -234,15 +242,21 @@ export class Orchestrator {
         history,
         username,
         instructions: modeInstructions(kind, username),
+        context: this.context.list(session.id),
+        vision: this.providers.supportsVision(slot.model!),
         contextLength: info?.contextLength,
         reserveForOutput: Math.min(info?.maxOutput ?? 4096, 8192),
       });
-      const stream = this.providers
-        .get(provider)
-        .stream(
-          { model, system: prompt.system, messages: prompt.messages, maxTokens: info?.maxOutput },
-          signal,
-        );
+      const stream = this.providers.get(provider).stream(
+        {
+          model,
+          system: prompt.system,
+          messages: prompt.messages,
+          maxTokens: info?.maxOutput,
+          webSearch: session.config.webSearch,
+        },
+        signal,
+      );
       for await (const event of stream) {
         if (event.type === 'text') {
           message.text += event.text;

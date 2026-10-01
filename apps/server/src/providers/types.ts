@@ -6,6 +6,8 @@ export interface ChatRequest {
   system: string;
   messages: ChatTurn[];
   maxTokens?: number;
+  /** Let the model search the web, where the provider supports it. */
+  webSearch?: boolean;
 }
 
 export type ChatEvent = { type: 'text'; text: string } | { type: 'usage'; usage: Usage };

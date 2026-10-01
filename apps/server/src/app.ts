@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Hono, type Context } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { serveStatic } from '@hono/node-server/serve-static';
 import type { z } from 'zod';
@@ -10,6 +11,8 @@ import {
   selfChatSchema,
   sendMessageSchema,
   sessionExportSchema,
+  githubImportSchema,
+  youtubeImportSchema,
   updateSessionSchema,
   updateSettingsSchema,
   type SessionEvent,
@@ -21,6 +24,11 @@ import { BusyError, Orchestrator, RequestError } from './orchestrator';
 import { Providers } from './providers';
 import { DEFAULT_TITLE, emptyConfig, SessionStore } from './sessions';
 import { Settings } from './settings';
+import { ContextStore, type NewContextItem } from './contextStore';
+import { extractFile, extractFolder, IngestError } from './ingest/files';
+import { importGithub } from './ingest/github';
+import { transcribe } from './ingest/transcribe';
+import { importYoutube } from './ingest/youtube';
 
 const HEARTBEAT_MS = 25_000;
 
@@ -43,7 +51,13 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
   const providers = new Providers(settings, config);
   const store = new SessionStore(db);
   const bus = new EventBus();
-  const orchestrator = new Orchestrator(store, providers, settings, bus);
+  const context = new ContextStore(db);
+  const orchestrator = new Orchestrator(store, providers, settings, bus, context);
+  const detail = (id: string) => ({
+    session: store.get(id, running(id))!,
+    messages: store.messages(id),
+    context: context.list(id),
+  });
   const running = (id: string) => orchestrator.isRunning(id);
 
   const app = new Hono();
@@ -86,7 +100,9 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
   api.post('/sessions/import', async (c) => {
     const input = await parse(c, sessionExportSchema);
     if (input instanceof Response) return input;
-    return c.json(store.import(input), 201);
+    const session = store.import(input);
+    for (const item of input.context ?? []) context.add(session.id, item);
+    return c.json(session, 201);
   });
 
   api.post('/sessions', async (c) => {
@@ -103,7 +119,7 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
     const id = c.req.param('id');
     const session = store.get(id, running(id));
     if (!session) return c.json({ error: 'Not found' }, 404);
-    return c.json({ session, messages: store.messages(id) });
+    return c.json({ ...detail(id), session });
   });
 
   api.patch('/sessions/:id', async (c) => {
@@ -183,7 +199,19 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
 
   // Save: the chat as a downloadable JSON file.
   api.get('/sessions/:id/export', (c) => {
-    const data = store.export(c.req.param('id'));
+    const id = c.req.param('id');
+    const exported = store.export(id);
+    const data = exported && {
+      ...exported,
+      context: context.list(id).map(({ kind, title, text, mediaType, data, note }) => ({
+        kind,
+        title,
+        text,
+        ...(mediaType && { mediaType }),
+        ...(data && { data }),
+        ...(note && { note }),
+      })),
+    };
     if (!data) return c.json({ error: 'Not found' }, 404);
     const slug =
       data.title
@@ -197,7 +225,7 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
 
   const resync = (id: string) => {
     const session = store.get(id, running(id))!;
-    bus.emit(id, { type: 'snapshot', detail: { session, messages: store.messages(id) } });
+    bus.emit(id, { type: 'snapshot', detail: { ...detail(id), session } });
     return session;
   };
 
@@ -217,6 +245,89 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
     return c.json(resync(id));
   });
 
+  // Attachments: every model in the chat sees them, ahead of the conversation.
+  const contextChanged = (id: string) =>
+    bus.emit(id, { type: 'context', sessionId: id, items: context.list(id) });
+
+  const ingest = async (c: Context, id: string, make: () => Promise<NewContextItem[]>) => {
+    if (!store.get(id)) return c.json({ error: 'Not found' }, 404);
+    try {
+      const items = (await make()).map((item) => context.add(id, item));
+      contextChanged(id);
+      return c.json({ items }, 201);
+    } catch (err) {
+      if (err instanceof IngestError) return c.json({ error: err.message }, 400);
+      console.error(err);
+      return c.json({ error: `Could not import: ${err instanceof Error ? err.message : err}` }, 502);
+    }
+  };
+
+  const uploadLimit = bodyLimit({
+    maxSize: 100 * 1024 * 1024,
+    onError: (c) => c.json({ error: 'Upload is larger than 100 MB.' }, 413),
+  });
+
+  // Files, or a whole folder (with `folder` set to its name and file names as relative paths).
+  api.post('/sessions/:id/context/files', uploadLimit, async (c) => {
+    const id = c.req.param('id');
+    const form = await c.req.parseBody({ all: true });
+    const files = ([] as unknown[]).concat(form.files ?? []).filter((f): f is File => f instanceof File);
+    if (!files.length) return c.json({ error: 'No files received.' }, 400);
+    const folder = typeof form.folder === 'string' ? form.folder.trim() : '';
+    const read = async (f: File) => ({ name: f.name, buf: Buffer.from(await f.arrayBuffer()) });
+    const skipped: string[] = [];
+    const res = await ingest(c, id, async () => {
+      if (folder) return [await extractFolder(folder, await Promise.all(files.map(read)))];
+      const items: NewContextItem[] = [];
+      for (const f of files) {
+        try {
+          const { name, buf } = await read(f);
+          items.push(await extractFile(name, buf));
+        } catch (err) {
+          if (!(err instanceof IngestError) || files.length === 1) throw err;
+          skipped.push(err.message);
+        }
+      }
+      return items;
+    });
+    if (res.status !== 201 || !skipped.length) return res;
+    return c.json({ ...((await res.json()) as object), skipped }, 201);
+  });
+
+  api.post('/sessions/:id/context/github', async (c) => {
+    const input = await parse(c, githubImportSchema);
+    if (input instanceof Response) return input;
+    return ingest(c, c.req.param('id'), async () => [await importGithub(input.repo, settings.key('github'))]);
+  });
+
+  api.post('/sessions/:id/context/youtube', async (c) => {
+    const input = await parse(c, youtubeImportSchema);
+    if (input instanceof Response) return input;
+    return ingest(c, c.req.param('id'), async () => [await importYoutube(input.url)]);
+  });
+
+  api.post('/sessions/:id/context/transcribe', uploadLimit, async (c) => {
+    const form = await c.req.parseBody();
+    const audio = form.audio;
+    if (!(audio instanceof File)) return c.json({ error: 'No audio received.' }, 400);
+    return ingest(c, c.req.param('id'), async () => {
+      const text = await transcribe(audio.name, audio.type, Buffer.from(await audio.arrayBuffer()), {
+        openai: settings.key('openai'),
+        huggingface: settings.key('huggingface'),
+        mock: config.mock,
+      });
+      if (!text) throw new IngestError('No speech was recognised in that recording.');
+      return [{ kind: 'transcript', title: `Transcript: ${audio.name}`, text }];
+    });
+  });
+
+  api.delete('/sessions/:id/context/:itemId', (c) => {
+    const id = c.req.param('id');
+    if (!context.remove(id, c.req.param('itemId'))) return c.json({ error: 'Not found' }, 404);
+    contextChanged(id);
+    return c.body(null, 204);
+  });
+
   api.post('/sessions/:id/stop', (c) => c.json({ stopped: orchestrator.stop(c.req.param('id')) }));
 
   // Live feed: a full snapshot first (so reconnects never miss anything), then incremental events.
@@ -232,7 +343,7 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
         wake?.();
       };
       const unsubscribe = bus.subscribe(id, push);
-      push({ type: 'snapshot', detail: { session, messages: store.messages(id) } });
+      push({ type: 'snapshot', detail: { ...detail(id), session } });
       const heartbeat = setInterval(() => void stream.writeSSE({ event: 'ping', data: '' }), HEARTBEAT_MS);
       let closed = false;
       stream.onAbort(() => {

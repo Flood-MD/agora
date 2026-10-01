@@ -5,10 +5,15 @@ export function Popover({
   onClose,
   children,
   label,
+  align = 'left',
+  className = 'w-64',
 }: {
   onClose: () => void;
   children: ReactNode;
   label: string;
+  /** Which edge of the trigger the panel lines up with. */
+  align?: 'left' | 'right';
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -26,7 +31,9 @@ export function Popover({
       ref={ref}
       role="dialog"
       aria-label={label}
-      className="absolute bottom-full left-0 z-40 mb-2 w-64 rounded-lg border border-line bg-panel p-3 shadow-xl"
+      className={`absolute bottom-full z-40 mb-2 rounded-lg border border-line bg-panel p-3 shadow-xl ${
+        align === 'right' ? 'right-0' : 'left-0'
+      } ${className}`}
     >
       {children}
     </div>

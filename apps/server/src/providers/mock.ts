@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import type { ModelInfo } from '@agora/shared';
+import { turnText, type ModelInfo } from '@agora/shared';
 import { ProviderError, type ChatEvent, type ChatRequest, type Provider } from './types';
 
 const MODELS: ModelInfo[] = [
@@ -7,6 +7,7 @@ const MODELS: ModelInfo[] = [
   { id: 'mock/chatty', provider: 'mock', name: 'Mock Chatty', contextLength: 32_000 },
   { id: 'mock/slow', provider: 'mock', name: 'Mock Slow', contextLength: 32_000 },
   { id: 'mock/error', provider: 'mock', name: 'Mock Error', contextLength: 32_000 },
+  { id: 'mock/vision', provider: 'mock', name: 'Mock Vision', contextLength: 32_000, vision: true },
 ];
 
 const FILLER =
@@ -24,7 +25,10 @@ export class MockProvider implements Provider {
   async *stream(req: ChatRequest, signal: AbortSignal): AsyncIterable<ChatEvent> {
     if (req.model === 'error') throw new ProviderError('Mock provider error (as requested).');
     const name = req.system.match(/^You are (.+?), an AI participant/m)?.[1] ?? req.model;
-    const last = req.messages.at(-1)?.content.split('\n\n').at(-1) ?? '';
+    const last =
+      turnText(req.messages.at(-1)?.content ?? '')
+        .split('\n\n')
+        .at(-1) ?? '';
     const quoted = last.length > 80 ? `${last.slice(0, 80)}…` : last;
     let text = `I'm ${name}. I see: "${quoted}" (${req.messages.length} turns of context).`;
     // Echo any instructions placed before the roster, so tests can see prompts reach the model.
@@ -41,6 +45,18 @@ export class MockProvider implements Provider {
           ? 'self-chat'
           : undefined;
     if (mode) text += ` Mode: ${mode}.`;
+    // Report attachments and web search so tests can see what reached the model.
+    const all = req.messages.map((m) => turnText(m.content)).join('\n');
+    const docs = all.split('<document ').length - 1;
+    const images = req.messages.reduce(
+      (n, m) => n + (typeof m.content === 'string' ? 0 : m.content.filter((p) => p.type === 'image').length),
+      0,
+    );
+    const unseen = all.split("You can't view images").length - 1;
+    if (docs || images || unseen) {
+      text += ` Context: ${docs} document(s), ${images} image(s)${unseen ? `, ${unseen} image(s) I can't see` : ''}.`;
+    }
+    if (req.webSearch) text += ' Web search: on.';
     if (req.model === 'chatty') text += ` ${FILLER} ${FILLER}`;
     const delay = req.model === 'slow' ? this.delayMs * 8 : this.delayMs;
     let out = 0;

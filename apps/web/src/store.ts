@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  ContextItem,
   CustomModelInput,
   Message,
   ModelInfo,
@@ -39,6 +40,10 @@ interface State {
   sessions: SessionSummary[];
   session?: Session;
   messages: Message[];
+  /** Attachments of the open chat. */
+  context: ContextItem[];
+  /** What is being attached right now (shown as a busy chip), if anything. */
+  attaching?: string;
   /** Live feed connection state for the open session. */
   connected: boolean;
   /** Set when the open chat turns out to be deleted or missing, so the app can move elsewhere. */
@@ -65,6 +70,12 @@ interface State {
   send(text: string, opts?: { target?: string; private?: boolean }): Promise<boolean>;
   selfChat(rounds: number, topic?: string): Promise<boolean>;
   regenerate(): Promise<void>;
+  /** Runs an attach action with a busy label and error toast; true on success. */
+  attach(
+    label: string,
+    run: (sessionId: string) => Promise<{ items: ContextItem[]; skipped?: string[] }>,
+  ): Promise<boolean>;
+  removeContext(itemId: string): Promise<void>;
   stop(): Promise<void>;
   applyEvent(event: SessionEvent): void;
   setConnected(connected: boolean): void;
@@ -83,6 +94,7 @@ export const useStore = create<State>()((set, get) => ({
   catalog: { models: [], errors: {}, loading: false, loaded: false },
   sessions: [],
   messages: [],
+  context: [],
   connected: false,
   prefs: loadPrefs(),
 
@@ -247,6 +259,27 @@ export const useStore = create<State>()((set, get) => ({
     if (session) await api.regenerate(session.id).catch((err) => set({ toast: errorText(err) }));
   },
 
+  async attach(label, run) {
+    const session = get().session;
+    if (!session) return false;
+    set({ attaching: label });
+    try {
+      const { skipped } = await run(session.id);
+      if (skipped?.length) set({ toast: `Skipped: ${skipped.join(' ')}` });
+      return true;
+    } catch (err) {
+      set({ toast: errorText(err) });
+      return false;
+    } finally {
+      set({ attaching: undefined });
+    }
+  },
+
+  async removeContext(itemId) {
+    const session = get().session;
+    if (session) await api.removeContext(session.id, itemId).catch((err) => set({ toast: errorText(err) }));
+  },
+
   async stop() {
     const session = get().session;
     if (session) await api.stop(session.id).catch((err) => set({ toast: errorText(err) }));
@@ -256,7 +289,14 @@ export const useStore = create<State>()((set, get) => ({
     const { session } = get();
     switch (event.type) {
       case 'snapshot':
-        set({ session: event.detail.session, messages: event.detail.messages });
+        set({
+          session: event.detail.session,
+          messages: event.detail.messages,
+          context: event.detail.context,
+        });
+        break;
+      case 'context':
+        if (session?.id === event.sessionId) set({ context: event.items });
         break;
       case 'message': {
         if (session?.id !== event.message.sessionId) return;
@@ -299,6 +339,6 @@ export const useStore = create<State>()((set, get) => ({
   },
 
   clearSession() {
-    set({ session: undefined, messages: [], connected: false, goneSessionId: undefined });
+    set({ session: undefined, messages: [], context: [], connected: false, goneSessionId: undefined });
   },
 }));

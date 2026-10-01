@@ -71,3 +71,36 @@ export const LockIcon = icon(
 export const LoopIcon = icon(
   <path d="M21 12a9 9 0 0 1-9 9H8m-5-9a9 9 0 0 1 9-9h4m0 0-3-3m3 3-3 3M8 21l3 3m-3-3 3-3" />,
 );
+export const PaperclipIcon = icon(
+  <path d="m21 11-8.6 8.6a5 5 0 0 1-7-7l8.5-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.3a1.7 1.7 0 0 1-2.3-2.3l7.9-7.9" />,
+);
+export const GlobeIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </>,
+);
+export const FileIcon = icon(<path d="M14 3H6v18h12V7zM14 3v4h4" />);
+export const FolderIcon = icon(<path d="M3 6h6l2 2h10v11H3z" />);
+export const ImageIcon = icon(
+  <>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="10" r="2" />
+    <path d="m21 16-5-5-9 9" />
+  </>,
+);
+export const GithubIcon = icon(
+  <path d="M9 19c-4 1.5-4-2-6-2.5m12 5V18a3.4 3.4 0 0 0-1-2.6c3.2-.4 6.5-1.6 6.5-7a5.4 5.4 0 0 0-1.5-3.8 5 5 0 0 0-.1-3.8s-1.2-.4-3.9 1.5a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8A5 5 0 0 0 5 6.6a5.4 5.4 0 0 0-1.5 3.8c0 5.4 3.3 6.6 6.5 7A3.4 3.4 0 0 0 9 18v3.5" />,
+);
+export const MicIcon = icon(
+  <>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </>,
+);
+export const PlayIcon = icon(
+  <>
+    <rect x="2" y="5" width="20" height="14" rx="4" />
+    <path d="m10 9 5 3-5 3z" fill="currentColor" />
+  </>,
+);

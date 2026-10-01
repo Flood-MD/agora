@@ -19,6 +19,7 @@ export const config = {
     openrouter: env.OPENROUTER_API_KEY || undefined,
     huggingface: env.HF_TOKEN || undefined,
     custom: env.CUSTOM_API_KEY || undefined,
+    github: env.GITHUB_TOKEN || undefined,
   },
   envCustomBaseUrl: env.CUSTOM_BASE_URL || undefined,
 };

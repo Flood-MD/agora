@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildMessages, cleanReply } from './buildMessages';
-import type { Message, SessionConfig, Slot } from './types';
+import { buildMessages, cleanReply, turnText, type ContentPart } from './buildMessages';
+import type { ContextItem, Message, SessionConfig, Slot } from './types';
 
 const slot = (id: string, label: string, extra: Partial<Slot> = {}): Slot => ({
   id,
@@ -159,5 +159,75 @@ describe('buildMessages with modes and direct messages', () => {
     const out = buildMessages({ slot: a, config, history: [], username: 'Sam', instructions: 'Lead now.' });
     expect(out.system.endsWith('Lead now.')).toBe(true);
     expect(out.system.indexOf('You are Alpha')).toBeLessThan(out.system.indexOf('Lead now.'));
+  });
+});
+
+describe('shared context', () => {
+  const ctx = (kind: ContextItem['kind'], title: string, extra: Partial<ContextItem> = {}): ContextItem => ({
+    id: title,
+    sessionId: 's',
+    kind,
+    title,
+    text: `contents of ${title}`,
+    tokens: 10,
+    createdAt: 0,
+    ...extra,
+  });
+
+  it('puts attachments in one leading user turn, merged with the first message', () => {
+    const out = buildMessages({
+      slot: a,
+      config,
+      history: [msg('user', 'What do these say?')],
+      username: 'Sam',
+      context: [ctx('file', 'notes.md'), ctx('youtube', 'A talk')],
+    });
+    expect(out.messages).toHaveLength(1);
+    const text = out.messages[0]!.content as string;
+    expect(text).toMatch(/^Shared context: material Sam attached/);
+    expect(text).toContain('<document title="notes.md" kind="file">\ncontents of notes.md\n</document>');
+    expect(text).toContain('<document title="A talk" kind="youtube">');
+    expect(text.endsWith('[Sam]: What do these say?')).toBe(true);
+  });
+
+  it('sends images only to vision models, as image parts', () => {
+    const image = ctx('image', 'chart.png', { text: '', mediaType: 'image/png', data: 'AAAA' });
+    const history = [msg('user', 'Describe it')];
+    const seeing = buildMessages({
+      slot: a,
+      config,
+      history,
+      username: 'Sam',
+      context: [image],
+      vision: true,
+    });
+    const parts = seeing.messages[0]!.content as ContentPart[];
+    expect(parts.map((p) => p.type)).toEqual(['text', 'image', 'text']);
+    expect(parts[1]).toEqual({ type: 'image', mediaType: 'image/png', data: 'AAAA' });
+    expect((parts[2] as { text: string }).text).toBe('[Sam]: Describe it');
+
+    const blind = buildMessages({ slot: a, config, history, username: 'Sam', context: [image] });
+    expect(typeof blind.messages[0]!.content).toBe('string');
+    expect(blind.messages[0]!.content).toContain("You can't view images");
+  });
+
+  it('escapes titles and never trims attachments when history is trimmed', () => {
+    const big = ctx('file', 'a"<b>.txt', { text: 'x'.repeat(2000) });
+    const history = Array.from({ length: 40 }, (_, i) =>
+      msg(i % 2 ? 'b' : 'user', `${i} ${'y'.repeat(400)}`),
+    );
+    const out = buildMessages({
+      slot: a,
+      config,
+      history,
+      username: 'Sam',
+      context: [big],
+      contextLength: 4000,
+    });
+    expect(out.trimmed).toBe(true);
+    const first = turnText(out.messages[0]!.content);
+    expect(first).toContain('title="a&quot;&lt;b>.txt"');
+    expect(first).toContain('x'.repeat(2000));
+    expect(turnText(out.messages.at(-1)!.content)).toContain('39 ');
   });
 });

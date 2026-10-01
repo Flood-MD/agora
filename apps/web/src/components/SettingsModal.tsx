@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { Modal } from './Modal';
 
-type KeyedProvider = 'openai' | 'anthropic' | 'openrouter' | 'huggingface' | 'custom';
+type KeyedProvider = 'openai' | 'anthropic' | 'openrouter' | 'huggingface' | 'custom' | 'github';
 
 const PROVIDERS: { id: KeyedProvider; help: string }[] = [
   { id: 'openrouter', help: 'openrouter.ai/keys — one key for hundreds of models' },
@@ -40,14 +40,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   const keyRow = (id: KeyedProvider, help: string) => {
-    const status = settings.providers[id];
+    const status = id === 'github' ? settings.github : settings.providers[id];
     const pending = keys[id];
     const fromEnv = status.source === 'env';
     return (
       <div key={id} className="mb-3">
         <div className="mb-1 flex items-baseline justify-between gap-2">
           <label htmlFor={`key-${id}`} className="text-sm font-medium">
-            {PROVIDER_LABELS[id]}
+            {id === 'github' ? 'GitHub token' : PROVIDER_LABELS[id]}
           </label>
           <span className={`text-xs ${status.configured ? 'text-green-400' : 'text-muted'}`}>
             {pending === null
@@ -129,6 +129,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         />
       </div>
       {keyRow('custom', 'Only if your server requires one.')}
+
+      <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-muted">GitHub</h3>
+      {keyRow(
+        'github',
+        'Optional: for private repositories and higher rate limits (github.com/settings/tokens, read-only).',
+      )}
 
       {settings.mockEnabled && (
         <p className="text-xs text-muted">Mock provider is enabled (MOCK_PROVIDER=1).</p>

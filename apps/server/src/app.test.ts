@@ -173,6 +173,7 @@ describe('settings', () => {
         openrouter: undefined,
         huggingface: undefined,
         custom: undefined,
+        github: undefined,
       },
     });
     const res = await app.request(

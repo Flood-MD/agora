@@ -110,6 +110,16 @@ export class Providers {
     return { models, errors };
   }
 
+  /**
+   * Whether a model accepts images: the catalogue says so where it can (OpenRouter, Anthropic);
+   * otherwise a conservative guess from the id.
+   */
+  supportsVision(id: string): boolean {
+    const known = this.cachedModel(id)?.vision;
+    if (known !== undefined) return known;
+    return /^(anthropic\/claude|openai\/(gpt-4o|gpt-4\.1|gpt-5|o3|o4|chatgpt-4o)|mock\/vision$)/.test(id);
+  }
+
   /** Known info for one model: a loaded provider catalogue, or a hand-added entry. */
   cachedModel(id: string): ModelInfo | undefined {
     const custom = this.settings.customModels().find((m) => m.id === id);

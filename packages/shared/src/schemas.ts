@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_SLOTS, PROVIDER_IDS } from './types';
+import { CONTEXT_KINDS, MAX_SLOTS, PROVIDER_IDS } from './types';
 
 export const slotSchema = z.object({
   id: z.string().min(1).max(64),
@@ -17,6 +17,7 @@ export const sessionConfigSchema = z.object({
   leader: z.boolean().optional(),
   leaderSlotId: z.string().max(64).optional(),
   fusion: z.boolean().optional(),
+  webSearch: z.boolean().optional(),
 });
 
 export const createSessionSchema = z.object({
@@ -59,6 +60,7 @@ export const updateSettingsSchema = z.object({
       openrouter: keySchema,
       huggingface: keySchema,
       custom: keySchema,
+      github: keySchema,
     })
     .partial()
     .optional(),
@@ -82,6 +84,15 @@ const exportedMessageSchema = z.object({
   createdAt: z.number(),
 });
 
+const exportedContextSchema = z.object({
+  kind: z.enum(CONTEXT_KINDS),
+  title: z.string().min(1).max(300),
+  text: z.string().max(5_000_000),
+  mediaType: z.string().max(100).optional(),
+  data: z.string().max(15_000_000).optional(),
+  note: z.string().max(300).optional(),
+});
+
 /** The file written by Save and read by Load. */
 export const sessionExportSchema = z.object({
   format: z.literal(EXPORT_FORMAT),
@@ -90,6 +101,17 @@ export const sessionExportSchema = z.object({
   title: z.string().trim().min(1).max(200),
   config: sessionConfigSchema,
   messages: z.array(exportedMessageSchema).max(20_000),
+  /** Attachments (added after the first release, so optional). */
+  context: z.array(exportedContextSchema).max(500).optional(),
+});
+
+export const githubImportSchema = z.object({
+  /** `owner/repo`, `owner/repo@ref/path`, or a github.com URL. */
+  repo: z.string().trim().min(3).max(500),
+});
+
+export const youtubeImportSchema = z.object({
+  url: z.string().trim().min(5).max(500),
 });
 
 export type SessionExport = z.infer<typeof sessionExportSchema>;

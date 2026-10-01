@@ -301,3 +301,80 @@ test('modes: leader, fusion, self-chat, regenerate, messages to one model, colla
   await page.getByRole('button', { name: 'Show mode buttons' }).click();
   await expect(page.getByRole('button', { name: 'Fusion' })).toBeVisible();
 });
+
+test('attachments, transcription and web search', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await page.getByTestId('session-menu').click();
+  await page.getByRole('menu').getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByTestId('session-menu')).toHaveText('New chat');
+  const removeButtons = page.getByRole('button', { name: /^Remove / });
+  while ((await removeButtons.count()) > 0) await removeButtons.first().click();
+  await addModel(page, 'Mock Vision');
+  await addModel(page, 'Mock Echo');
+  const chips = page.getByTestId('context-chip');
+
+  // Files: text and an image, as chips with token counts.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.getByTestId('attach-files').setInputFiles([
+    { name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Launch plan\nShip on Friday.') },
+    { name: 'pixel.png', mimeType: 'image/png', buffer: png },
+  ]);
+  await expect(chips).toHaveCount(2);
+  await expect(chips.first()).toContainText('notes.md');
+
+  // A folder: one chip; dependencies are skipped in the browser.
+  const dir = testInfo.outputPath('project');
+  const fs = await import('node:fs/promises');
+  await fs.mkdir(`${dir}/src`, { recursive: true });
+  await fs.mkdir(`${dir}/node_modules/dep`, { recursive: true });
+  await fs.writeFile(`${dir}/src/index.ts`, 'export const answer = 42;');
+  await fs.writeFile(`${dir}/README.md`, '# Project');
+  await fs.writeFile(`${dir}/node_modules/dep/index.js`, 'module.exports = 1;');
+  await page.getByTestId('attach-folder').setInputFiles(dir);
+  await expect(chips).toHaveCount(3);
+  await expect(chips.nth(2)).toContainText('project/');
+
+  // Preview shows the extracted text.
+  await chips.nth(2).getByRole('button').first().click();
+  const preview = page.getByRole('dialog', { name: 'project/' });
+  await expect(preview).toContainText('2 files');
+  await expect(preview).toContainText('<file path="src/index.ts">');
+  await expect(preview).not.toContainText('node_modules');
+  await preview.getByRole('button', { name: 'Close' }).click();
+
+  // Transcribe an uploaded audio file (the mock provider stands in for Whisper).
+  await page.getByRole('button', { name: 'Attach' }).click();
+  await page.getByRole('menuitem', { name: 'Transcribe' }).click();
+  await page.getByTestId('transcribe-file').setInputFiles({
+    name: 'memo.webm',
+    mimeType: 'audio/webm',
+    buffer: Buffer.alloc(2048),
+  });
+  await expect(chips).toHaveCount(4);
+  await expect(chips.nth(3)).toContainText('Transcript: memo.webm');
+
+  // GitHub and YouTube open their import dialogs.
+  await page.getByRole('button', { name: 'Attach' }).click();
+  await page.getByRole('menuitem', { name: 'GitHub' }).click();
+  await expect(page.getByRole('dialog', { name: 'Import from GitHub' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  // Every model gets the attachments; only the vision model gets the image.
+  await page.getByRole('button', { name: 'Web search' }).click();
+  await expect(page.getByRole('button', { name: 'Web search' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByLabel('Message').fill('What did I attach?');
+  await page.keyboard.press('Enter');
+  const done = page.locator('[data-testid=model-message][data-status=done]');
+  await expect(done).toHaveCount(2);
+  await expect(done.nth(0)).toContainText('Context: 3 document(s), 1 image(s).');
+  await expect(done.nth(1)).toContainText("3 document(s), 0 image(s), 1 image(s) I can't see");
+  await expect(done.nth(0)).toContainText('Web search: on.');
+
+  // Removing a chip takes it out of later rounds.
+  await page.getByRole('button', { name: 'Remove pixel.png' }).click();
+  await expect(chips).toHaveCount(3);
+  await page.getByRole('button', { name: 'Web search' }).click();
+});
