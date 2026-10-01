@@ -48,6 +48,10 @@ interface State {
   removeCustomModel(id: string): Promise<void>;
   loadSessions(): Promise<void>;
   newSession(): Promise<string>;
+  /** Load: creates a chat from a file written by Save and returns its id, or undefined on failure. */
+  importSession(file: File): Promise<string | undefined>;
+  clearTranscript(): Promise<void>;
+  restoreTranscript(): Promise<void>;
   renameSession(id: string, title: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
   updateConfig(mutate: (config: SessionConfig) => SessionConfig): void;
@@ -132,6 +136,39 @@ export const useStore = create<State>()((set, get) => ({
     const session = await api.createSession();
     await get().loadSessions();
     return session.id;
+  },
+
+  async importSession(file) {
+    let data: unknown;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      set({ toast: `“${file.name}” is not a JSON file saved from Agora.` });
+      return undefined;
+    }
+    try {
+      const session = await api.importSession(data);
+      await get().loadSessions();
+      return session.id;
+    } catch (err) {
+      const invalid = err instanceof ApiError && err.status === 400;
+      set({
+        toast: invalid
+          ? `“${file.name}” is not a chat saved from Agora.`
+          : `Could not load: ${errorText(err)}`,
+      });
+      return undefined;
+    }
+  },
+
+  async clearTranscript() {
+    const session = get().session;
+    if (session) await api.clear(session.id).catch((err) => set({ toast: errorText(err) }));
+  },
+
+  async restoreTranscript() {
+    const session = get().session;
+    if (session) await api.restore(session.id).catch((err) => set({ toast: errorText(err) }));
   },
 
   async renameSession(id, title) {

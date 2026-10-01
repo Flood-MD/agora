@@ -47,7 +47,12 @@ export const api = {
     request<ModelInfo>('/models/custom', { method: 'POST', json: input }),
   removeCustomModel: (id: string) =>
     request<void>(`/models/custom?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  sessions: () => request<SessionSummary[]>('/sessions'),
+  sessions: (query = '') =>
+    request<SessionSummary[]>(`/sessions${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`),
+  importSession: (data: unknown) => request<Session>('/sessions/import', { method: 'POST', json: data }),
+  exportUrl: (id: string) => `/api/sessions/${id}/export`,
+  clear: (id: string) => request<Session>(`/sessions/${id}/clear`, { method: 'POST' }),
+  restore: (id: string) => request<Session>(`/sessions/${id}/restore`, { method: 'POST' }),
   session: (id: string) => request<SessionDetail>(`/sessions/${id}`),
   createSession: () => request<Session>('/sessions', { method: 'POST', json: {} }),
   updateSession: (id: string, patch: { title?: string; config?: SessionConfig; baseUpdatedAt?: number }) =>

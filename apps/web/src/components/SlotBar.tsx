@@ -60,7 +60,7 @@ export function SlotBar() {
       {slots.map((slot) => (
         <div
           key={slot.id}
-          className="flex h-12 items-center rounded-lg shadow-sm md:h-14"
+          className="flex h-10 items-center rounded-lg shadow-sm sm:h-12 md:h-14"
           style={{ background: slot.color, color: textOn(slot.color) }}
         >
           <button
@@ -84,7 +84,7 @@ export function SlotBar() {
       ))}
       {slots.length < MAX_SLOTS && (
         <button
-          className="relative flex h-12 items-center justify-center rounded-lg border border-line bg-panel text-slate-300 hover:bg-panel-2 md:h-14"
+          className="relative flex h-10 items-center justify-center rounded-lg border border-line bg-panel text-slate-300 hover:bg-panel-2 sm:h-12 md:h-14"
           onClick={() => setPicking('new')}
           aria-label="Add model"
         >
@@ -106,6 +106,11 @@ export function SlotBar() {
 /** Row under the slot cards: council-wide tools. */
 export function SlotToolbar() {
   const rolesActive = useStore((s) => (s.session ? hasRoles(s.session.config) : false));
+  const running = useStore((s) => s.session?.running ?? false);
+  const canRestore = useStore((s) => s.session?.canRestore ?? false);
+  const hasMessages = useStore((s) => s.messages.length > 0);
+  const clearTranscript = useStore((s) => s.clearTranscript);
+  const restoreTranscript = useStore((s) => s.restoreTranscript);
   const [rolesOpen, setRolesOpen] = useState(false);
 
   return (
@@ -116,6 +121,26 @@ export function SlotToolbar() {
           <span className="size-1.5 rounded-full bg-blue-400" title="Prompts or custom names are active" />
         )}
       </button>
+      <div className="ml-auto flex items-center gap-2">
+        {canRestore && (
+          <button
+            className="btn px-2.5 py-1 text-xs"
+            onClick={() => void restoreTranscript()}
+            disabled={running}
+            title="Bring back the last cleared conversation"
+          >
+            Restore
+          </button>
+        )}
+        <button
+          className="btn px-2.5 py-1 text-xs"
+          onClick={() => void clearTranscript()}
+          disabled={running || !hasMessages}
+          title={running ? 'Stop the responses first' : 'Clear the conversation (Restore brings it back)'}
+        >
+          Clear
+        </button>
+      </div>
       {rolesOpen && <RolesModal onClose={() => setRolesOpen(false)} />}
     </div>
   );

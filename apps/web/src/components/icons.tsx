@@ -48,3 +48,6 @@ export const SearchIcon = icon(
     <path d="m21 21-4.3-4.3" />
   </>,
 );
+export const DownloadIcon = icon(<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3" />);
+export const UploadIcon = icon(<path d="M12 15V3m0 0L8 7m4-4 4 4M4 17v3h16v-3" />);
+export const ChatsIcon = icon(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z" />);

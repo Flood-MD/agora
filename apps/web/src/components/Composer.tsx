@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { SendIcon, StopIcon } from './icons';
+import { ChatsIcon, SendIcon, StopIcon } from './icons';
 
 const DRAFT_KEY = 'agora.draft.';
 
-export function Composer() {
+export function Composer({ onOpenPastChats }: { onOpenPastChats: () => void }) {
   const session = useStore((s) => s.session);
   const send = useStore((s) => s.send);
   const stop = useStore((s) => s.stop);
@@ -55,6 +55,14 @@ export function Composer() {
   return (
     <div className="px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 sm:px-4">
       <div className="mx-auto flex max-w-3xl items-end gap-2">
+        <button
+          className="btn size-11 shrink-0 rounded-xl p-0"
+          onClick={onOpenPastChats}
+          title="Past chats"
+          aria-label="Past chats"
+        >
+          <ChatsIcon size={18} />
+        </button>
         <textarea
           ref={box}
           rows={2}

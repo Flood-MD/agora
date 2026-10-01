@@ -49,6 +49,35 @@ export const updateSettingsSchema = z.object({
     .optional(),
 });
 
+export const EXPORT_FORMAT = 'agora.session';
+
+const exportedMessageSchema = z.object({
+  round: z.number().int().min(0),
+  author: z.string().min(1).max(64),
+  authorName: z.string().max(200),
+  model: z.string().max(300).optional(),
+  text: z.string().max(500_000),
+  status: z.enum(['streaming', 'done', 'error', 'stopped', 'interrupted']),
+  error: z.string().max(5_000).optional(),
+  audience: z.string().min(1).max(64),
+  usage: z.object({ inputTokens: z.number().optional(), outputTokens: z.number().optional() }).optional(),
+  latencyMs: z.number().optional(),
+  createdAt: z.number(),
+});
+
+/** The file written by Save and read by Load. */
+export const sessionExportSchema = z.object({
+  format: z.literal(EXPORT_FORMAT),
+  version: z.literal(1),
+  exportedAt: z.number(),
+  title: z.string().trim().min(1).max(200),
+  config: sessionConfigSchema,
+  messages: z.array(exportedMessageSchema).max(20_000),
+});
+
+export type SessionExport = z.infer<typeof sessionExportSchema>;
+export type ExportedMessage = z.infer<typeof exportedMessageSchema>;
+
 /** A model id typed in by hand, for models a provider serves but doesn't list (yet). */
 export const customModelSchema = z.object({
   provider: z.enum(PROVIDER_IDS),
