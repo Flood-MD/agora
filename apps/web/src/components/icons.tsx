@@ -51,3 +51,23 @@ export const SearchIcon = icon(
 export const DownloadIcon = icon(<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3" />);
 export const UploadIcon = icon(<path d="M12 15V3m0 0L8 7m4-4 4 4M4 17v3h16v-3" />);
 export const ChatsIcon = icon(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z" />);
+export const MinusIcon = icon(<path d="M5 12h14" />);
+export const ArrowUpIcon = icon(<path d="M12 19V5m0 0-6 6m6-6 6 6" />);
+export const CrownIcon = icon(<path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5z" />);
+export const FusionIcon = icon(
+  <>
+    <circle cx="6" cy="5" r="2" />
+    <circle cx="18" cy="5" r="2" />
+    <circle cx="12" cy="19" r="2" />
+    <path d="M6 7c0 5 6 5 6 10M18 7c0 5-6 5-6 10" />
+  </>,
+);
+export const LockIcon = icon(
+  <>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </>,
+);
+export const LoopIcon = icon(
+  <path d="M21 12a9 9 0 0 1-9 9H8m-5-9a9 9 0 0 1 9-9h4m0 0-3-3m3 3-3 3M8 21l3 3m-3-3 3-3" />,
+);

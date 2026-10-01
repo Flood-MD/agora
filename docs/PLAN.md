@@ -256,7 +256,7 @@ stored with the session (files under `/data/uploads`).
 | M8    | Polish: optional password, PWA, cost display, background, a11y, optional HTTPS compose, README    | Clean-clone install works following README only                                       |
 | Later | Imagine (image generation)                                                                        | —                                                                                     |
 
-**Status:** M0–M4 implemented (Rapid Roleplay, originally a Roles tab, stays in M7). Also done early: the session
+**Status:** M0–M5 implemented (Rapid Roleplay, originally a Roles tab, stays in M7). Also done early: the session
 switcher, Hide, and adding models by ID. Docker build and live provider calls have been verified on a real LAN
 host.
 

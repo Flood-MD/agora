@@ -16,13 +16,20 @@ const PREFS_KEY = 'agora.prefs';
 
 interface Prefs {
   hideSlots: boolean;
+  /** The `-` button: mode buttons collapsed into a `+`. */
+  modesCollapsed: boolean;
+  /** Messages to one model default to private. */
+  privateDm: boolean;
+  selfChatRounds: number;
 }
+
+const DEFAULT_PREFS: Prefs = { hideSlots: false, modesCollapsed: false, privateDm: false, selfChatRounds: 3 };
 
 function loadPrefs(): Prefs {
   try {
-    return { hideSlots: false, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
+    return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
   } catch {
-    return { hideSlots: false };
+    return DEFAULT_PREFS;
   }
 }
 
@@ -55,7 +62,9 @@ interface State {
   renameSession(id: string, title: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
   updateConfig(mutate: (config: SessionConfig) => SessionConfig): void;
-  send(text: string): Promise<boolean>;
+  send(text: string, opts?: { target?: string; private?: boolean }): Promise<boolean>;
+  selfChat(rounds: number, topic?: string): Promise<boolean>;
+  regenerate(): Promise<void>;
   stop(): Promise<void>;
   applyEvent(event: SessionEvent): void;
   setConnected(connected: boolean): void;
@@ -209,16 +218,33 @@ export const useStore = create<State>()((set, get) => ({
     });
   },
 
-  async send(text) {
+  async send(text, opts) {
     const session = get().session;
     if (!session) return false;
     try {
-      await api.send(session.id, text);
+      await api.send(session.id, text, opts);
       return true;
     } catch (err) {
       set({ toast: errorText(err) });
       return false;
     }
+  },
+
+  async selfChat(rounds, topic) {
+    const session = get().session;
+    if (!session) return false;
+    try {
+      await api.selfChat(session.id, rounds, topic);
+      return true;
+    } catch (err) {
+      set({ toast: errorText(err) });
+      return false;
+    }
+  },
+
+  async regenerate() {
+    const session = get().session;
+    if (session) await api.regenerate(session.id).catch((err) => set({ toast: errorText(err) }));
   },
 
   async stop() {

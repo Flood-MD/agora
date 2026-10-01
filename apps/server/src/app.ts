@@ -7,6 +7,7 @@ import type { z } from 'zod';
 import {
   createSessionSchema,
   customModelSchema,
+  selfChatSchema,
   sendMessageSchema,
   sessionExportSchema,
   updateSessionSchema,
@@ -16,7 +17,7 @@ import {
 import type { AppConfig } from './config';
 import { openDb } from './db';
 import { EventBus } from './events';
-import { BusyError, Orchestrator } from './orchestrator';
+import { BusyError, Orchestrator, RequestError } from './orchestrator';
 import { Providers } from './providers';
 import { DEFAULT_TITLE, emptyConfig, SessionStore } from './sessions';
 import { Settings } from './settings';
@@ -28,6 +29,12 @@ async function parse<S extends z.ZodType>(c: Context, schema: S): Promise<z.infe
   const result = schema.safeParse(body ?? {});
   if (!result.success) return c.json({ error: 'Invalid request', issues: result.error.issues }, 400);
   return result.data;
+}
+
+function orchestratorError(c: Context, err: unknown) {
+  if (err instanceof BusyError) return c.json({ error: err.message }, 409);
+  if (err instanceof RequestError) return c.json({ error: err.message }, err.status);
+  throw err;
 }
 
 export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 'agora.db')) {
@@ -139,11 +146,38 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
       session = store.update(id, { title })!;
     }
     try {
-      const message = orchestrator.send(session, input.text);
+      const message = orchestrator.send(session, input.text, {
+        target: input.target,
+        private: input.private,
+      });
       return c.json({ message }, 202);
     } catch (err) {
-      if (err instanceof BusyError) return c.json({ error: err.message }, 409);
-      throw err;
+      return orchestratorError(c, err);
+    }
+  });
+
+  api.post('/sessions/:id/self-chat', async (c) => {
+    const id = c.req.param('id');
+    const input = await parse(c, selfChatSchema);
+    if (input instanceof Response) return input;
+    const session = store.get(id);
+    if (!session) return c.json({ error: 'Not found' }, 404);
+    try {
+      const message = orchestrator.selfChat(session, input.rounds, input.topic || undefined);
+      return c.json({ message: message ?? null }, 202);
+    } catch (err) {
+      return orchestratorError(c, err);
+    }
+  });
+
+  api.post('/sessions/:id/regenerate', (c) => {
+    const session = store.get(c.req.param('id'));
+    if (!session) return c.json({ error: 'Not found' }, 404);
+    try {
+      orchestrator.regenerate(session);
+      return c.body(null, 202);
+    } catch (err) {
+      return orchestratorError(c, err);
     }
   });
 

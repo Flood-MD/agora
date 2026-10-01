@@ -32,6 +32,8 @@ interface MessageRow {
   usage: string | null;
   latency_ms: number | null;
   created_at: number;
+  target: string | null;
+  kind: Message['kind'] | null;
 }
 
 export const DEFAULT_TITLE = 'New chat';
@@ -53,6 +55,8 @@ function toMessage(r: MessageRow): Message {
     status: r.status,
     error: r.error ?? undefined,
     audience: r.audience,
+    target: r.target ?? undefined,
+    kind: r.kind ?? undefined,
     usage: r.usage ? JSON.parse(r.usage) : undefined,
     latencyMs: r.latency_ms ?? undefined,
     createdAt: r.created_at,
@@ -76,7 +80,7 @@ function snippet(text: string, q: string): string {
 }
 
 export type NewMessage = Pick<Message, 'round' | 'author' | 'authorName' | 'text' | 'status' | 'audience'> &
-  Partial<Pick<Message, 'model'>>;
+  Partial<Pick<Message, 'model' | 'target' | 'kind'>>;
 
 /** Persistence for sessions and their transcripts. SQLite is the source of truth for every device. */
 export class SessionStore {
@@ -213,8 +217,10 @@ export class SessionStore {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO messages (id, session_id, seq, round, author, author_name, model, text, status, audience, created_at)
-         VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE session_id = ?), ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, session_id, seq, round, author, author_name, model, text, status, audience,
+                               target, kind, created_at)
+         VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE session_id = ?), ?, ?, ?, ?, ?, ?, ?,
+                 ?, ?, ?)`,
       )
       .run(
         id,
@@ -227,6 +233,8 @@ export class SessionStore {
         m.text,
         m.status,
         m.audience,
+        m.target ?? null,
+        m.kind ?? null,
         now,
       );
     return this.message(id)!;
@@ -277,6 +285,8 @@ export class SessionStore {
         status: m.status,
         ...(m.error && { error: m.error }),
         audience: m.audience,
+        ...(m.target && { target: m.target }),
+        ...(m.kind && { kind: m.kind }),
         ...(m.usage && { usage: m.usage }),
         ...(m.latencyMs !== undefined && { latencyMs: m.latencyMs }),
         createdAt: m.createdAt,
@@ -291,8 +301,8 @@ export class SessionStore {
       const session = this.create(data.title, data.config);
       const insert = this.db.prepare(
         `INSERT INTO messages (id, session_id, seq, round, author, author_name, model, text, status, error,
-                               audience, usage, latency_ms, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                               audience, target, kind, usage, latency_ms, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       data.messages.forEach((m, i) => {
         // A reply that was mid-stream when exported can't continue here.
@@ -309,6 +319,8 @@ export class SessionStore {
           status,
           m.error ?? (m.status === 'streaming' ? 'Exported while still generating' : null),
           m.audience,
+          m.target ?? null,
+          m.kind ?? null,
           m.usage ? JSON.stringify(m.usage) : null,
           m.latencyMs ?? null,
           m.createdAt,
@@ -320,6 +332,12 @@ export class SessionStore {
       this.db.exec('ROLLBACK');
       throw err;
     }
+  }
+
+  /** Deletes the given messages for good (used by Regenerate). */
+  deleteMessages(ids: string[]) {
+    const del = this.db.prepare('DELETE FROM messages WHERE id = ?');
+    for (const id of ids) del.run(id);
   }
 
   message(id: string): Message | undefined {

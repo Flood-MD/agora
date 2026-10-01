@@ -140,3 +140,24 @@ describe('cleanReply', () => {
     expect(cleanReply('[A.B]: hi', 'A.B')).toBe('hi');
   });
 });
+
+describe('buildMessages with modes and direct messages', () => {
+  it('labels visible messages to one model, leader answers and fusions', () => {
+    const history = [
+      msg('user', 'Just for Beta', { target: 'b' }),
+      msg('b', 'Beta here'),
+      msg('c', 'Final call', { kind: 'leader' }),
+      msg('a', 'Merged answer', { kind: 'fusion' }),
+    ];
+    const forC = buildMessages({ slot: c, config, history, username: 'Sam' });
+    expect(forC.messages[0]!.content).toBe('[Sam, to Beta]: Just for Beta\n\n[Beta]: Beta here');
+    expect(forC.messages[1]).toEqual({ role: 'assistant', content: 'Final call' });
+    expect(forC.messages[2]!.content).toBe('[Alpha, fusing the answers]: Merged answer');
+  });
+
+  it('appends mode instructions after the roster', () => {
+    const out = buildMessages({ slot: a, config, history: [], username: 'Sam', instructions: 'Lead now.' });
+    expect(out.system.endsWith('Lead now.')).toBe(true);
+    expect(out.system.indexOf('You are Alpha')).toBeLessThan(out.system.indexOf('Lead now.'));
+  });
+});

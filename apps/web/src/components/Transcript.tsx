@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import type { Message, Slot } from '@agora/shared';
 import { slotDisplayName } from '@agora/shared';
 import { useStore } from '../store';
+import { LockIcon } from './icons';
 
 const FALLBACK_COLOR = '#64748b';
 
@@ -41,6 +42,8 @@ export function Transcript() {
             message={m}
             slot={slots?.find((s) => s.id === m.author)}
             showModelName={showModelNames}
+            /* Name of the one model a user message (or private reply) was for. */
+            toName={nameFor(slots, m.target ?? (m.audience !== 'all' ? m.audience : undefined))}
           />
         ))}
       </div>
@@ -48,21 +51,41 @@ export function Transcript() {
   );
 }
 
+function nameFor(slots: Slot[] | undefined, id: string | undefined) {
+  if (!id) return undefined;
+  const slot = slots?.find((s) => s.id === id);
+  return slot ? slotDisplayName(slot) : 'a removed model';
+}
+
+const KIND_LABELS = { leader: 'Leader', fusion: 'Fusion', 'self-chat': 'Self-Chat' } as const;
+
 const MessageView = memo(function MessageView({
   message: m,
   slot,
   showModelName,
+  toName,
 }: {
   message: Message;
   slot?: Slot;
   showModelName: boolean;
+  toName?: string;
 }) {
+  const isPrivate = m.audience !== 'all';
   if (m.author === 'user') {
     return (
       <div
-        className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-field px-4 py-2.5"
+        className={`ml-auto max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2.5 ${
+          isPrivate ? 'border border-dashed border-slate-400/60 bg-field/60' : 'bg-field'
+        }`}
         data-testid="user-message"
+        data-private={isPrivate || undefined}
       >
+        {toName && (
+          <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-muted">
+            {isPrivate && <LockIcon size={11} />}
+            {isPrivate ? `Private to ${toName}` : `To ${toName}`}
+          </div>
+        )}
         <div className="whitespace-pre-wrap break-words text-[15px]">{m.text}</div>
       </div>
     );
@@ -74,15 +97,29 @@ const MessageView = memo(function MessageView({
 
   return (
     <article
-      className="rounded-xl border border-line bg-panel/90 px-4 py-3"
-      style={{ borderLeft: `3px solid ${color}` }}
+      className={`rounded-xl border px-4 py-3 ${
+        m.kind === 'fusion' ? 'border-blue-400/40 bg-blue-950/30' : 'border-line bg-panel/90'
+      } ${isPrivate ? 'border-dashed' : ''}`}
+      style={{ borderLeft: `3px ${isPrivate ? 'dashed' : 'solid'} ${color}` }}
       data-testid="model-message"
       data-status={m.status}
+      data-kind={m.kind}
+      data-private={isPrivate || undefined}
     >
-      <header className="mb-1.5 flex items-baseline gap-2">
+      <header className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
         <span className="text-sm font-semibold" style={{ color }}>
           {name}
         </span>
+        {m.kind && (
+          <span className="rounded bg-field px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-slate-300">
+            {KIND_LABELS[m.kind]}
+          </span>
+        )}
+        {isPrivate && (
+          <span className="flex items-center gap-1 text-[11px] text-muted">
+            <LockIcon size={11} /> Private
+          </span>
+        )}
         {showModelName && slot?.customName && <span className="text-xs text-muted">{slot.modelLabel}</span>}
       </header>
       {m.text ? (

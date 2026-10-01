@@ -14,6 +14,9 @@ export const sessionConfigSchema = z.object({
   slots: z.array(slotSchema).max(MAX_SLOTS),
   systemPrompt: z.string().max(50_000),
   showModelNames: z.boolean(),
+  leader: z.boolean().optional(),
+  leaderSlotId: z.string().max(64).optional(),
+  fusion: z.boolean().optional(),
 });
 
 export const createSessionSchema = z.object({
@@ -30,6 +33,18 @@ export const updateSessionSchema = z.object({
 
 export const sendMessageSchema = z.object({
   text: z.string().trim().min(1).max(200_000),
+  /** Send to one slot only. */
+  target: z.string().min(1).max(64).optional(),
+  /** With a target: hide the message and the reply from the other models. */
+  private: z.boolean().optional(),
+});
+
+export const MAX_SELF_CHAT_ROUNDS = 20;
+
+export const selfChatSchema = z.object({
+  rounds: z.number().int().min(1).max(MAX_SELF_CHAT_ROUNDS),
+  /** Optional opening message from the user. */
+  topic: z.string().trim().max(200_000).optional(),
 });
 
 const keySchema = z.string().trim().max(500).nullable().optional();
@@ -60,6 +75,8 @@ const exportedMessageSchema = z.object({
   status: z.enum(['streaming', 'done', 'error', 'stopped', 'interrupted']),
   error: z.string().max(5_000).optional(),
   audience: z.string().min(1).max(64),
+  target: z.string().max(64).optional(),
+  kind: z.enum(['leader', 'fusion', 'self-chat']).optional(),
   usage: z.object({ inputTokens: z.number().optional(), outputTokens: z.number().optional() }).optional(),
   latencyMs: z.number().optional(),
   createdAt: z.number(),
