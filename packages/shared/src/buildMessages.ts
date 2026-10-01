@@ -22,6 +22,8 @@ export interface BuildInput {
   contextLength?: number;
   /** Tokens to keep free for the reply. */
   reserveForOutput?: number;
+  /** Mode-specific instructions (leader, fusion, self-chat), appended to the system prompt. */
+  instructions?: string;
 }
 
 const OPENING_TURN = '(The group chat has just started.)';
@@ -67,12 +69,19 @@ export function buildSystemPrompt(
 function toTurn(message: Message, slot: Slot, config: SessionConfig, username: string): ChatTurn {
   if (message.author === slot.id) return { role: 'assistant', content: message.text };
   const isPrivate = message.audience !== 'all';
+  const nameOf = (slotId: string, fallback: string) => {
+    const s = config.slots.find((x) => x.id === slotId);
+    return s ? slotDisplayName(s) : fallback;
+  };
   let label: string;
   if (message.author === 'user') {
-    label = isPrivate ? `Private message from ${username}` : username;
+    if (isPrivate) label = `Private message from ${username}`;
+    else if (message.target) label = `${username}, to ${nameOf(message.target, 'one participant')}`;
+    else label = username;
   } else {
-    const author = config.slots.find((s) => s.id === message.author);
-    label = author ? slotDisplayName(author) : message.authorName;
+    label = nameOf(message.author, message.authorName);
+    if (message.kind === 'leader') label += ', as leader';
+    if (message.kind === 'fusion') label += ', fusing the answers';
   }
   return { role: 'user', content: `[${label}]: ${message.text}` };
 }
@@ -95,12 +104,17 @@ function mergeAdjacent(turns: ChatTurn[]): ChatTurn[] {
 export function buildMessages(input: BuildInput): BuiltPrompt {
   const { slot, config, history, username } = input;
   const visible = history.filter((m) => usable(m) && isVisibleTo(m, slot.id));
-  const system = buildSystemPrompt(
-    slot,
-    config,
-    username,
-    visible.some((m) => m.audience !== 'all'),
-  );
+  const system = [
+    buildSystemPrompt(
+      slot,
+      config,
+      username,
+      visible.some((m) => m.audience !== 'all'),
+    ),
+    input.instructions?.trim(),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
   let turns = visible.map((m) => toTurn(m, slot, config, username));
 
   let trimmed = false;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message, Session, SessionDetail, SettingsView } from '@agora/shared';
+import type { Message, Session, SessionConfig, SessionDetail, SettingsView } from '@agora/shared';
 import { councilConfig, latestMessages, mockSlot, readEvents, testApp } from './test-helpers';
 
 const json = (body: unknown, method = 'POST') => ({
@@ -478,5 +478,200 @@ describe('past chats', () => {
     expect(await list('entirely')).toHaveLength(1); // still matches by title
     await app.request(`/api/sessions/${other}`, json({ title: 'Renamed' }, 'PATCH'));
     expect(await list('entirely')).toEqual([]);
+  });
+});
+
+describe('modes', () => {
+  const create = async (app: ReturnType<typeof testApp>['app'], config: SessionConfig) =>
+    (await (await app.request('/api/sessions', json({ config }))).json()) as Session;
+  const trio = (extra: Partial<SessionConfig> = {}): SessionConfig => ({
+    ...councilConfig(
+      mockSlot('a', 'mock/echo', 'Alpha'),
+      mockSlot('b', 'mock/echo', 'Beta'),
+      mockSlot('c', 'mock/echo', 'Gamma'),
+    ),
+    ...extra,
+  });
+
+  it('leader answers last, after seeing the others', async () => {
+    const { app } = testApp();
+    const s = await create(app, trio({ leader: true, leaderSlotId: 'b' }));
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'Decide' }));
+    const msgs = (await waitIdle(app, s.id)).messages;
+    expect(msgs.map((m) => m.author)).toEqual(['user', 'a', 'c', 'b']);
+    const leader = msgs[3]!;
+    expect(leader.kind).toBe('leader');
+    expect(leader.text).toContain('Mode: leader.');
+    expect(leader.text).toContain('[Gamma]'); // saw the others' answers
+    expect(msgs[1]!.text).not.toContain('Mode:');
+  });
+
+  it('fusion: slot 1 merges everyone’s answers', async () => {
+    const { app } = testApp();
+    const s = await create(app, trio({ fusion: true }));
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'Ideas?' }));
+    const msgs = (await waitIdle(app, s.id)).messages;
+    expect(msgs.map((m) => [m.author, m.kind])).toEqual([
+      ['user', undefined],
+      ['a', undefined],
+      ['b', undefined],
+      ['c', undefined],
+      ['a', 'fusion'],
+    ]);
+    expect(msgs[4]!.text).toContain('Mode: fusion.');
+    expect(msgs[4]!.text).toContain('[Gamma]');
+  });
+
+  it('self-chat runs the requested rounds, one model at a time, with an optional topic', async () => {
+    const { app } = testApp();
+    const s = await create(
+      app,
+      councilConfig(mockSlot('a', 'mock/echo', 'Alpha'), mockSlot('b', 'mock/echo', 'Beta')),
+    );
+    const res = await app.request(
+      `/api/sessions/${s.id}/self-chat`,
+      json({ rounds: 2, topic: 'Cats or dogs?' }),
+    );
+    expect(res.status).toBe(202);
+    const msgs = (await waitIdle(app, s.id)).messages;
+    expect(msgs.map((m) => `${m.author}${m.round}`)).toEqual(['user1', 'a1', 'b1', 'a2', 'b2']);
+    expect(msgs.slice(1).every((m) => m.kind === 'self-chat' && m.text.includes('Mode: self-chat.'))).toBe(
+      true,
+    );
+    expect(msgs[2]!.text).toContain('[Alpha]'); // Beta saw Alpha's turn
+    expect(msgs[4]!.text).toContain('[Alpha]'); // and Alpha's second turn
+
+    // Without a topic it just continues.
+    await app.request(`/api/sessions/${s.id}/self-chat`, json({ rounds: 1 }));
+    expect((await waitIdle(app, s.id)).messages.map((m) => `${m.author}${m.round}`).slice(5)).toEqual([
+      'a3',
+      'b3',
+    ]);
+  });
+
+  it('self-chat validates rounds and needs a model; stop ends it early', async () => {
+    const { app } = testApp({ mockDelayMs: 10 });
+    const empty = await create(app, councilConfig());
+    expect((await app.request(`/api/sessions/${empty.id}/self-chat`, json({ rounds: 2 }))).status).toBe(400);
+    const s = await create(app, councilConfig(mockSlot('a', 'mock/slow')));
+    expect((await app.request(`/api/sessions/${s.id}/self-chat`, json({ rounds: 0 }))).status).toBe(400);
+    expect((await app.request(`/api/sessions/${s.id}/self-chat`, json({ rounds: 21 }))).status).toBe(400);
+    await app.request(`/api/sessions/${s.id}/self-chat`, json({ rounds: 5 }));
+    await new Promise((r) => setTimeout(r, 150));
+    await app.request(`/api/sessions/${s.id}/stop`, { method: 'POST' });
+    const msgs = (await waitIdle(app, s.id)).messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.status).toBe('stopped');
+  });
+
+  it('regenerate replaces the last round’s replies using the same plan', async () => {
+    const { app } = testApp();
+    const s = await create(app, trio({ fusion: true }));
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'Q1' }));
+    const before = (await waitIdle(app, s.id)).messages;
+    expect((await app.request(`/api/sessions/${s.id}/regenerate`, { method: 'POST' })).status).toBe(202);
+    const after = (await waitIdle(app, s.id)).messages;
+    expect(after.map((m) => [m.author, m.kind])).toEqual(before.map((m) => [m.author, m.kind]));
+    expect(after[0]!.id).toBe(before[0]!.id);
+    expect(after.slice(1).every((m, i) => m.id !== before[i + 1]!.id)).toBe(true);
+
+    const empty = await create(app, trio());
+    expect((await app.request(`/api/sessions/${empty.id}/regenerate`, { method: 'POST' })).status).toBe(409);
+  });
+});
+
+describe('messages to one model', () => {
+  it('visible: only the target answers, and everyone sees it later', async () => {
+    const { app } = testApp();
+    const config = councilConfig(mockSlot('a', 'mock/echo', 'Alpha'), mockSlot('b', 'mock/echo', 'Beta'));
+    const s = (await (
+      await app.request('/api/sessions', json({ config: { ...config, leader: true } }))
+    ).json()) as Session;
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'Only you, Beta', target: 'b' }));
+    let msgs = (await waitIdle(app, s.id)).messages;
+    expect(msgs.map((m) => [m.author, m.audience, m.target, m.kind])).toEqual([
+      ['user', 'all', 'b', undefined],
+      ['b', 'all', undefined, undefined],
+    ]);
+    expect(msgs[1]!.text).toContain('[User, to Beta]: Only you, Beta');
+
+    await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'Everyone now' }));
+    msgs = (await waitIdle(app, s.id)).messages;
+    expect(msgs.find((m) => m.author === 'a' && m.round === 2)!.text).toContain('3 turns of context');
+  });
+
+  it('rejects unknown targets and private messages without one', async () => {
+    const { app } = testApp();
+    const s = (await (
+      await app.request('/api/sessions', json({ config: councilConfig(mockSlot('a')) }))
+    ).json()) as Session;
+    expect(
+      (await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'x', target: 'zz' }))).status,
+    ).toBe(400);
+    expect(
+      (await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'x', private: true }))).status,
+    ).toBe(400);
+  });
+
+  it('private: the exchange never reaches another model, in any mode', async () => {
+    const seen = new Map<string, string[]>();
+    const { app } = testApp();
+    // Record every request the mock provider receives.
+    const { MockProvider } = await import('./providers/mock');
+    const original = MockProvider.prototype.stream;
+    MockProvider.prototype.stream = function (req, signal) {
+      const name = req.system.match(/^You are (.+?), an AI participant/m)![1]!;
+      seen.set(name, [...(seen.get(name) ?? []), JSON.stringify(req)]);
+      return original.call(this, req, signal);
+    };
+    try {
+      const config = councilConfig(
+        mockSlot('a', 'mock/echo', 'Alpha'),
+        mockSlot('b', 'mock/echo', 'Beta'),
+        mockSlot('c', 'mock/echo', 'Gamma'),
+      );
+      const s = (await (await app.request('/api/sessions', json({ config }))).json()) as Session;
+      await app.request(
+        `/api/sessions/${s.id}/messages`,
+        json({ text: 'SECRET-PASSPHRASE', target: 'b', private: true }),
+      );
+      const msgs = (await waitIdle(app, s.id)).messages;
+      expect(msgs.map((m) => [m.author, m.audience])).toEqual([
+        ['user', 'b'],
+        ['b', 'b'],
+      ]);
+      expect(msgs[1]!.text).toContain('Private message from User');
+
+      // Exercise every mode afterwards; Beta's private reply quotes the secret, so check for it too.
+      const patch = (extra: Partial<SessionConfig>) =>
+        app.request(`/api/sessions/${s.id}`, json({ config: { ...config, ...extra } }, 'PATCH'));
+      await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'group' }));
+      await waitIdle(app, s.id);
+      await patch({ leader: true, leaderSlotId: 'a' });
+      await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'leader round' }));
+      await waitIdle(app, s.id);
+      await patch({ fusion: true });
+      await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'fusion round' }));
+      await waitIdle(app, s.id);
+      await app.request(`/api/sessions/${s.id}/self-chat`, json({ rounds: 1 }));
+      await waitIdle(app, s.id);
+      await app.request(`/api/sessions/${s.id}/messages`, json({ text: 'DM to Gamma', target: 'c' }));
+      await waitIdle(app, s.id);
+      await app.request(`/api/sessions/${s.id}/regenerate`, { method: 'POST' });
+      await waitIdle(app, s.id);
+
+      for (const name of ['Alpha', 'Gamma']) {
+        expect(seen.get(name)!.length).toBeGreaterThan(3);
+        for (const req of seen.get(name)!) expect(req).not.toContain('SECRET-PASSPHRASE');
+      }
+      expect(
+        seen
+          .get('Beta')!
+          .slice(1)
+          .every((req) => req.includes('SECRET-PASSPHRASE')),
+      ).toBe(true);
+    } finally {
+      MockProvider.prototype.stream = original;
+    }
   });
 });

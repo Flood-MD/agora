@@ -37,6 +37,9 @@ const MIGRATIONS: string[] = [
   `,
   // Clear hides messages instead of deleting them, so Restore can bring the last cleared transcript back.
   `ALTER TABLE messages ADD COLUMN cleared INTEGER NOT NULL DEFAULT 0;`,
+  // Messages sent to one model (`target`) and how a reply was produced (`kind`: leader, fusion, self-chat).
+  `ALTER TABLE messages ADD COLUMN target TEXT;
+   ALTER TABLE messages ADD COLUMN kind TEXT;`,
 ];
 
 /** Opens (and migrates) the database. Pass `':memory:'` for tests. */

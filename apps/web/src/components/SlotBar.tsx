@@ -1,5 +1,6 @@
 import {
   hasRoles,
+  leaderSlot,
   MAX_SLOTS,
   nextSlotColor,
   slotDisplayName,
@@ -8,7 +9,7 @@ import {
 } from '@agora/shared';
 import { useState } from 'react';
 import { useStore } from '../store';
-import { PlusIcon, XIcon } from './icons';
+import { CrownIcon, PlusIcon, XIcon } from './icons';
 import { ModelPicker } from './ModelPicker';
 import { RolesModal } from './RolesModal';
 
@@ -27,6 +28,7 @@ const NO_SLOTS: Slot[] = [];
 
 export function SlotBar() {
   const slots = useStore((s) => s.session?.config.slots ?? NO_SLOTS);
+  const leaderId = useStore((s) => (s.session?.config.leader ? leaderSlot(s.session.config)?.id : undefined));
   const updateConfig = useStore((s) => s.updateConfig);
   /** Slot being edited, or 'new' to add one. */
   const [picking, setPicking] = useState<string | 'new' | null>(null);
@@ -68,7 +70,10 @@ export function SlotBar() {
             onClick={() => setPicking(slot.id)}
             title="Change model"
           >
-            <span className="w-full truncate text-sm font-semibold">{slotDisplayName(slot)}</span>
+            <span className="flex w-full items-center gap-1.5 text-sm font-semibold">
+              {slot.id === leaderId && <CrownIcon size={14} className="shrink-0" aria-label="Leader" />}
+              <span className="truncate">{slotDisplayName(slot)}</span>
+            </span>
             {slot.customName && (
               <span className="w-full truncate text-[11px] opacity-75">{slot.modelLabel}</span>
             )}

@@ -33,6 +33,14 @@ export class MockProvider implements Provider {
       .trim()
       .replace(/\s*\n+\s*/g, ' / ');
     if (instructions) text += ` Instructions: "${instructions.slice(0, 160)}".`;
+    const mode = /You are the leader of this council/.test(req.system)
+      ? 'leader'
+      : /^Fusion step:/m.test(req.system)
+        ? 'fusion'
+        : /continuing the conversation among themselves/.test(req.system)
+          ? 'self-chat'
+          : undefined;
+    if (mode) text += ` Mode: ${mode}.`;
     if (req.model === 'chatty') text += ` ${FILLER} ${FILLER}`;
     const delay = req.model === 'slow' ? this.delayMs * 8 : this.delayMs;
     let out = 0;

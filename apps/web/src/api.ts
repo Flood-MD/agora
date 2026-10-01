@@ -58,8 +58,14 @@ export const api = {
   updateSession: (id: string, patch: { title?: string; config?: SessionConfig; baseUpdatedAt?: number }) =>
     request<Session>(`/sessions/${id}`, { method: 'PATCH', json: patch }),
   deleteSession: (id: string) => request<void>(`/sessions/${id}`, { method: 'DELETE' }),
-  send: (id: string, text: string) =>
-    request<{ message: Message }>(`/sessions/${id}/messages`, { method: 'POST', json: { text } }),
+  send: (id: string, text: string, opts: { target?: string; private?: boolean } = {}) =>
+    request<{ message: Message }>(`/sessions/${id}/messages`, { method: 'POST', json: { text, ...opts } }),
+  selfChat: (id: string, rounds: number, topic?: string) =>
+    request<{ message: Message | null }>(`/sessions/${id}/self-chat`, {
+      method: 'POST',
+      json: { rounds, topic },
+    }),
+  regenerate: (id: string) => request<void>(`/sessions/${id}/regenerate`, { method: 'POST' }),
   stop: (id: string) => request<{ stopped: boolean }>(`/sessions/${id}/stop`, { method: 'POST' }),
   eventsUrl: (id: string) => `/api/sessions/${id}/events`,
 };

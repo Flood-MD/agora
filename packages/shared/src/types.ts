@@ -41,6 +41,12 @@ export interface SessionConfig {
   slots: Slot[];
   systemPrompt: string;
   showModelNames: boolean;
+  /** Leader mode: the other models answer first, then the leader gives the final answer. */
+  leader?: boolean;
+  /** Which slot leads; falls back to the first slot with a model. */
+  leaderSlotId?: string;
+  /** Fusion mode: after everyone answers, slot 1's model merges the answers into one. */
+  fusion?: boolean;
 }
 
 export interface Session {
@@ -88,10 +94,16 @@ export interface Message {
   error?: string;
   /** `'all'`, or a slot id for a private message visible only to that slot. */
   audience: string;
+  /** On a user message sent to one model only (visible or private): that slot's id. */
+  target?: string;
+  /** How a model reply was produced, when not a plain answer. */
+  kind?: MessageKind;
   usage?: Usage;
   latencyMs?: number;
   createdAt: number;
 }
+
+export type MessageKind = 'leader' | 'fusion' | 'self-chat';
 
 export interface SessionDetail {
   session: Session;

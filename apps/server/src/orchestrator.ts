@@ -1,11 +1,18 @@
 import {
+  activeSlots,
   buildMessages,
   cleanReply,
+  modeInstructions,
+  planRound,
+  planSelfChatRound,
   slotDisplayName,
   splitModelId,
   type Message,
+  type MessageKind,
   type Session,
+  type SessionConfig,
   type Slot,
+  type Step,
 } from '@agora/shared';
 import type { EventBus } from './events';
 import type { Providers } from './providers';
@@ -20,6 +27,31 @@ export class BusyError extends Error {
   constructor() {
     super('A response is already being generated in this chat. Stop it or wait for it to finish.');
   }
+}
+
+/** A request that can't be carried out as asked (shown to the user as a 400/409). */
+export class RequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 409 = 400,
+  ) {
+    super(message);
+  }
+}
+
+/** One round to run. Steps are planned when the round starts, from the config at that moment. */
+interface RoundPlan {
+  round: number;
+  /** `'all'`, or the slot id a private exchange belongs to. */
+  audience: string;
+  steps: (config: SessionConfig) => Step[];
+}
+
+export interface SendOptions {
+  /** Send to one slot only. */
+  target?: string;
+  /** With a target: only that slot sees the message and its reply. */
+  private?: boolean;
 }
 
 /**
@@ -46,41 +78,108 @@ export class Orchestrator {
     return Boolean(run);
   }
 
-  /** Records the user's message and starts a group round in the background. */
-  send(session: Session, text: string): Message {
+  /**
+   * Records the user's message and starts its round in the background: the whole group (with
+   * Leader or Fusion if on), or one slot when `target` is set.
+   */
+  send(session: Session, text: string, opts: SendOptions = {}): Message {
     if (this.isRunning(session.id)) throw new BusyError();
+    const { target } = opts;
+    if (opts.private && !target) throw new RequestError('A private message needs a recipient.');
+    if (target && !activeSlots(session.config).some((s) => s.id === target)) {
+      throw new RequestError('That model is no longer in this chat.');
+    }
+    const audience = opts.private && target ? target : 'all';
     const round = this.store.lastRound(session.id) + 1;
-    const message = this.store.addMessage(session.id, {
-      round,
-      author: 'user',
-      authorName: this.settings.username(),
-      text,
-      status: 'done',
-      audience: 'all',
-    });
-    this.store.touch(session.id);
-    this.bus.emit(session.id, { type: 'message', message });
-
-    const slots = session.config.slots.filter((s) => s.model);
-    if (slots.length) void this.run(session.id, round, [slots]);
+    const message = this.addUserMessage(session.id, { round, text, audience, target });
+    void this.run(session.id, [{ round, audience, steps: (config) => planRound(config, target) }]);
     return message;
   }
 
   /**
-   * Runs a plan: a list of steps, each a set of slots answering in parallel.
-   * Every step sees the transcript including the previous steps' answers.
+   * Self-Chat: the models talk among themselves for a number of rounds, one at a time in slot order.
+   * An optional topic is posted first as the user's message.
    */
-  private async run(sessionId: string, round: number, steps: Slot[][]) {
+  selfChat(session: Session, rounds: number, topic?: string): Message | undefined {
+    if (this.isRunning(session.id)) throw new BusyError();
+    if (!activeSlots(session.config).length) throw new RequestError('Add at least one model first.');
+    const first = this.store.lastRound(session.id) + 1;
+    const message = topic
+      ? this.addUserMessage(session.id, { round: first, text: topic, audience: 'all' })
+      : undefined;
+    void this.run(
+      session.id,
+      Array.from({ length: rounds }, (_, i) => ({
+        round: first + i,
+        audience: 'all',
+        steps: planSelfChatRound,
+      })),
+    );
+    return message;
+  }
+
+  /** Discards the model replies of the last round and runs that round again. */
+  regenerate(session: Session) {
+    if (this.isRunning(session.id)) throw new BusyError();
+    const visible = this.store.messages(session.id);
+    const last = visible.at(-1);
+    if (!last) throw new RequestError('There is nothing to regenerate yet.', 409);
+    const inRound = visible.filter((m) => m.round === last.round);
+    const user = inRound.find((m) => m.author === 'user');
+    this.store.deleteMessages(inRound.filter((m) => m.author !== 'user').map((m) => m.id));
+    this.bus.emit(session.id, {
+      type: 'snapshot',
+      detail: { session: this.store.get(session.id, true)!, messages: this.store.messages(session.id) },
+    });
+    void this.run(session.id, [
+      user
+        ? { round: last.round, audience: user.audience, steps: (config) => planRound(config, user.target) }
+        : { round: last.round, audience: 'all', steps: planSelfChatRound },
+    ]);
+  }
+
+  private addUserMessage(
+    sessionId: string,
+    m: { round: number; text: string; audience: string; target?: string },
+  ): Message {
+    const message = this.store.addMessage(sessionId, {
+      ...m,
+      author: 'user',
+      authorName: this.settings.username(),
+      status: 'done',
+    });
+    this.store.touch(sessionId);
+    this.bus.emit(sessionId, { type: 'message', message });
+    return message;
+  }
+
+  /**
+   * Runs rounds in order. Within a round each step is a set of slots answering in parallel;
+   * every step sees the transcript including the previous steps' answers.
+   */
+  private async run(sessionId: string, rounds: RoundPlan[]) {
     const controller = new AbortController();
     this.runs.set(sessionId, controller);
     this.emitSession(sessionId);
     try {
-      for (const step of steps) {
-        if (controller.signal.aborted) break;
-        const session = this.store.get(sessionId);
-        if (!session) break;
-        const history = this.store.messages(sessionId);
-        await Promise.all(step.map((slot) => this.runSlot(session, slot, round, history, controller.signal)));
+      for (const plan of rounds) {
+        const initial = this.store.get(sessionId);
+        if (!initial) break;
+        for (const step of plan.steps(initial.config)) {
+          if (controller.signal.aborted) return;
+          // Re-read so Roles edits and removed slots apply from the next step on.
+          const session = this.store.get(sessionId);
+          if (!session) return;
+          const slots = step.slotIds
+            .map((id) => session.config.slots.find((s) => s.id === id))
+            .filter((s): s is Slot => Boolean(s?.model));
+          const history = this.store.messages(sessionId);
+          await Promise.all(
+            slots.map((slot) =>
+              this.runSlot(session, slot, plan.round, history, controller.signal, plan.audience, step.kind),
+            ),
+          );
+        }
       }
     } finally {
       this.runs.delete(sessionId);
@@ -94,6 +193,8 @@ export class Orchestrator {
     round: number,
     history: Message[],
     signal: AbortSignal,
+    audience: string,
+    kind?: MessageKind,
   ) {
     const name = slotDisplayName(slot);
     const message = this.store.addMessage(session.id, {
@@ -103,7 +204,8 @@ export class Orchestrator {
       model: slot.model!,
       text: '',
       status: 'streaming',
-      audience: 'all',
+      audience,
+      kind,
     });
     this.bus.emit(session.id, { type: 'message', message });
 
@@ -125,11 +227,13 @@ export class Orchestrator {
     try {
       const { provider, model } = splitModelId(slot.model!);
       const info = this.providers.cachedModel(slot.model!);
+      const username = this.settings.username();
       const prompt = buildMessages({
         slot,
         config: session.config,
         history,
-        username: this.settings.username(),
+        username,
+        instructions: modeInstructions(kind, username),
         contextLength: info?.contextLength,
         reserveForOutput: Math.min(info?.maxOutput ?? 4096, 8192),
       });

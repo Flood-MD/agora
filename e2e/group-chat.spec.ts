@@ -219,3 +219,85 @@ test('clear and restore, save and load, and past chats search', async ({ page })
   await expect(dialog).toBeHidden();
   await expect(page.getByTestId('user-message').first()).toHaveText('Hello council');
 });
+
+test('modes: leader, fusion, self-chat, regenerate, messages to one model, collapse', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('session-menu').click();
+  await page.getByRole('menu').getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByTestId('session-menu')).toHaveText('New chat');
+  const removeButtons = page.getByRole('button', { name: /^Remove / });
+  while ((await removeButtons.count()) > 0) await removeButtons.first().click();
+  await addModel(page, 'Mock Echo');
+  await addModel(page, 'Mock Chatty');
+  const replies = page.getByTestId('model-message');
+  const done = page.locator('[data-testid=model-message][data-status=done]');
+  const send = async (text: string) => {
+    await page.getByLabel('Message').fill(text);
+    await page.keyboard.press('Enter');
+  };
+
+  // Leader: pick Mock Chatty with the ↑ button; it answers last, marked as leader.
+  await page.getByRole('button', { name: 'Choose the leader' }).click();
+  await page.getByRole('dialog', { name: 'Choose the leader' }).getByLabel('Mock Chatty').click();
+  await expect(page.getByRole('button', { name: 'Leader', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByLabel('Leader', { exact: true })).toBeVisible(); // crown on the slot card
+  await send('Who leads?');
+  await expect(done).toHaveCount(2);
+  await expect(replies.nth(1)).toHaveAttribute('data-kind', 'leader');
+  await expect(replies.nth(1)).toContainText('Mode: leader.');
+
+  // Fusion turns Leader off; slot 1 merges after both answer.
+  await page.getByRole('button', { name: 'Fusion' }).click();
+  await expect(page.getByRole('button', { name: 'Leader', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  await send('Merge please');
+  await expect(done).toHaveCount(5);
+  await expect(replies.nth(4)).toHaveAttribute('data-kind', 'fusion');
+  await expect(replies.nth(4)).toContainText("I'm Mock Echo");
+
+  // Regenerate redoes the last round with the same plan.
+  await page.getByRole('button', { name: 'Regenerate' }).click();
+  await expect(page.locator('[data-testid=model-message][data-status=streaming]').first()).toBeVisible();
+  await expect(done).toHaveCount(5);
+  await expect(replies.nth(4)).toHaveAttribute('data-kind', 'fusion');
+  await page.getByRole('button', { name: 'Fusion' }).click();
+
+  // A visible message to one model: only it answers.
+  await page.getByLabel('Send to').selectOption({ label: 'Mock Chatty' });
+  await expect(page.getByLabel('Message')).toHaveAttribute('placeholder', 'Message to Mock Chatty…');
+  await send('Just you');
+  await expect(done).toHaveCount(6);
+  await expect(page.getByTestId('user-message').last()).toContainText('To Mock Chatty');
+  await expect(replies.last()).toContainText("I'm Mock Chatty");
+
+  // A private one: marked private on both sides.
+  await page.getByRole('button', { name: 'Private' }).click();
+  await send('Our secret');
+  await expect(done).toHaveCount(7);
+  await expect(page.getByTestId('user-message').last()).toHaveAttribute('data-private', 'true');
+  await expect(page.getByTestId('user-message').last()).toContainText('Private to Mock Chatty');
+  await expect(replies.last()).toHaveAttribute('data-private', 'true');
+  await expect(replies.last()).toContainText(/Private message from \w+/);
+  await page.getByLabel('Send to').selectOption({ label: 'Everyone' });
+
+  // Self-Chat with a topic from the message box, two rounds of two models.
+  await page.getByLabel('Message').fill('Debate tabs versus spaces');
+  await page.getByRole('button', { name: 'Self-Chat!' }).click();
+  const selfChat = page.getByRole('dialog', { name: 'Self-Chat' });
+  await selfChat.getByLabel('Rounds').fill('2');
+  await selfChat.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByLabel('Message')).toHaveValue('');
+  await expect(page.getByTestId('user-message').last()).toHaveText('Debate tabs versus spaces');
+  await expect(page.locator('[data-kind=self-chat][data-status=done]')).toHaveCount(4);
+
+  // The - button collapses the mode buttons into a +, and back.
+  await page.getByRole('button', { name: 'Hide mode buttons' }).click();
+  await expect(page.getByRole('button', { name: 'Fusion' })).toBeHidden();
+  await page.getByRole('button', { name: 'Show mode buttons' }).click();
+  await expect(page.getByRole('button', { name: 'Fusion' })).toBeVisible();
+});
