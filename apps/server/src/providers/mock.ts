@@ -24,6 +24,21 @@ export class MockProvider implements Provider {
 
   async *stream(req: ChatRequest, signal: AbortSignal): AsyncIterable<ChatEvent> {
     if (req.model === 'error') throw new ProviderError('Mock provider error (as requested).');
+    // Rapid Roleplay: answer with a deterministic cast of the requested size.
+    if (req.system.startsWith('You design roleplay casts')) {
+      const ask = turnText(req.messages[0]?.content ?? '');
+      const count = Number(ask.match(/exactly (\d+) character/)?.[1] ?? 3);
+      const topic = ask.match(/^Scenario: (.*)$/m)?.[1] ?? 'a scene';
+      const cast = {
+        setting: `Mock setting for: ${topic}`,
+        characters: Array.from({ length: count }, (_, i) => ({
+          name: `Character ${i + 1}`,
+          prompt: `You are character ${i + 1} in ${topic}.`,
+        })),
+      };
+      yield { type: 'text', text: `Here you go:\n\`\`\`json\n${JSON.stringify(cast)}\n\`\`\`` };
+      return;
+    }
     const name = req.system.match(/^You are (.+?), an AI participant/m)?.[1] ?? req.model;
     const last =
       turnText(req.messages.at(-1)?.content ?? '')

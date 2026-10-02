@@ -2,6 +2,7 @@ import { activeSlots, leaderSlot, MAX_SELF_CHAT_ROUNDS, slotDisplayName } from '
 import { useState } from 'react';
 import { useStore } from '../store';
 import { ArrowUpIcon, CrownIcon, FusionIcon, LockIcon, LoopIcon, MinusIcon, PlusIcon } from './icons';
+import { EmojiPicker } from './EmojiPicker';
 import { Popover } from './Popover';
 
 const toggle = (on: boolean) => `btn px-2.5 py-1 text-xs ${on ? 'btn-primary' : ''}`;
@@ -14,11 +15,14 @@ export function ModesRow({
   target,
   setTarget,
   takeTopic,
+  insertText,
 }: {
   target: string;
   setTarget: (id: string) => void;
   /** Returns the composer text (used as the Self-Chat topic) and clears it. */
   takeTopic: () => string;
+  /** Inserts text at the cursor in the message box. */
+  insertText: (text: string) => void;
 }) {
   const config = useStore((s) => s.session?.config);
   const running = useStore((s) => s.session?.running ?? false);
@@ -147,6 +151,8 @@ export function ModesRow({
                 </Popover>
               )}
             </div>
+
+            <EmojiPicker onPick={insertText} />
 
             <div className="relative">
               <button

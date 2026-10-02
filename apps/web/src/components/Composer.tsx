@@ -152,6 +152,17 @@ export function Composer({ onOpenPastChats }: { onOpenPastChats: () => void }) {
           update('');
           return topic;
         }}
+        insertText={(insert) => {
+          const el = box.current;
+          const start = el?.selectionStart ?? text.length;
+          const end = el?.selectionEnd ?? text.length;
+          update(text.slice(0, start) + insert + text.slice(end));
+          // Put the cursor after the inserted text once React has re-rendered.
+          requestAnimationFrame(() => {
+            el?.focus();
+            el?.setSelectionRange(start + insert.length, start + insert.length);
+          });
+        }}
       />
     </div>
   );

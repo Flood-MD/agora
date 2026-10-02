@@ -76,6 +76,8 @@ interface State {
     run: (sessionId: string) => Promise<{ items: ContextItem[]; skipped?: string[] }>,
   ): Promise<boolean>;
   removeContext(itemId: string): Promise<void>;
+  /** Takes a session returned by the server (e.g. after a cast was applied) as current. */
+  adoptSession(session: Session): void;
   stop(): Promise<void>;
   applyEvent(event: SessionEvent): void;
   setConnected(connected: boolean): void;
@@ -273,6 +275,10 @@ export const useStore = create<State>()((set, get) => ({
     } finally {
       set({ attaching: undefined });
     }
+  },
+
+  adoptSession(session) {
+    set((s) => (s.session?.id === session.id ? { session } : {}));
   },
 
   async removeContext(itemId) {

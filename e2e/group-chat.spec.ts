@@ -124,6 +124,7 @@ test('roles: system prompt, custom names and slot prompts reach the models', asy
 
   await page.getByRole('button', { name: 'Roles' }).click();
   const roles = page.getByRole('dialog', { name: 'Roles' });
+  await roles.getByRole('tab', { name: 'System Prompt' }).click();
   await roles.getByLabel('System prompt for all models').fill('Speak like a courtroom drama.');
 
   await roles.getByRole('tab', { name: 'Custom Names' }).click();
@@ -377,4 +378,61 @@ test('attachments, transcription and web search', async ({ page }, testInfo) => 
   await page.getByRole('button', { name: 'Remove pixel.png' }).click();
   await expect(chips).toHaveCount(3);
   await page.getByRole('button', { name: 'Web search' }).click();
+});
+
+test('rapid roleplay, saved setups and the emoji picker', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('session-menu').click();
+  await page.getByRole('menu').getByRole('button', { name: 'New chat', exact: true }).click();
+  await expect(page.getByTestId('session-menu')).toHaveText('New chat');
+  const removeButtons = page.getByRole('button', { name: /^Remove / });
+  while ((await removeButtons.count()) > 0) await removeButtons.first().click();
+  await addModel(page, 'Mock Echo');
+  await addModel(page, 'Mock Echo');
+
+  // Generate a cast, keeping the two models: the panel switches to the results.
+  await page.getByRole('button', { name: 'Roles' }).click();
+  const roles = page.getByRole('dialog', { name: 'Roles' });
+  await expect(roles.getByRole('tab', { name: 'Rapid Roleplay' })).toHaveAttribute('aria-selected', 'true');
+  await roles.getByLabel('Allow changing the number of models').uncheck();
+  await roles.getByLabel('Scenario').fill('A haunted lighthouse');
+  await roles.getByRole('button', { name: 'Generate Roleplay' }).click();
+  await expect(roles.getByRole('tab', { name: 'Custom Names' })).toHaveAttribute('aria-selected', 'true');
+  await expect(roles.getByPlaceholder('Custom name for Mock Echo…').first()).toHaveValue('Character 1');
+  await roles.getByRole('tab', { name: 'System Prompt' }).click();
+  await expect(roles.getByLabel('System prompt for all models')).toHaveValue(
+    'Mock setting for: A haunted lighthouse',
+  );
+  await roles.getByRole('button', { name: 'Save & Close' }).click();
+  await expect(page.getByRole('button', { name: 'Remove Character 2' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Remove / })).toHaveCount(2);
+
+  // Save it as a setup, then use a built-in one that resizes the council to three.
+  await page.getByRole('button', { name: 'Roles' }).click();
+  page.once('dialog', (d) => void d.accept('Lighthouse'));
+  await roles.getByRole('button', { name: 'Save current roles…' }).click();
+  await expect(roles.getByRole('listitem').filter({ hasText: 'Lighthouse' })).toContainText(
+    'Character 1, Character 2',
+  );
+  await roles.getByLabel('Allow changing the number of models').check();
+  await roles.getByRole('button', { name: 'Use Debate panel' }).click();
+  await expect(roles.getByRole('tab', { name: 'Custom Names' })).toHaveAttribute('aria-selected', 'true');
+  await roles.getByRole('button', { name: 'Save & Close' }).click();
+  await expect(page.getByRole('button', { name: /^Remove / })).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Remove Moderator' })).toBeVisible();
+
+  // Delete the saved setup.
+  await page.getByRole('button', { name: 'Roles' }).click();
+  page.once('dialog', (d) => void d.accept());
+  await roles.getByRole('button', { name: 'Delete Lighthouse' }).click();
+  await expect(roles.getByRole('listitem').filter({ hasText: 'Lighthouse' })).toHaveCount(0);
+  await roles.getByRole('button', { name: 'Cancel' }).click();
+
+  // Emoji picker inserts at the cursor.
+  await page.getByLabel('Message').fill('Hello world');
+  await page.getByLabel('Message').evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(5, 5));
+  await page.getByRole('button', { name: 'Emoji' }).click();
+  await page.getByRole('tab', { name: 'Gestures' }).click();
+  await page.getByRole('button', { name: 'Insert 👋' }).click();
+  await expect(page.getByLabel('Message')).toHaveValue('Hello👋 world');
 });

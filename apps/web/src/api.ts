@@ -1,5 +1,7 @@
 import type {
+  Cast,
   ContextItem,
+  RolePreset,
   CustomModelInput,
   Message,
   ModelInfo,
@@ -89,6 +91,17 @@ export const api = {
       body: form,
     });
   },
+  presets: () => request<RolePreset[]>('/presets'),
+  createPreset: (name: string, cast: Cast) =>
+    request<RolePreset>('/presets', { method: 'POST', json: { name, cast } }),
+  deletePreset: (presetId: string) => request<void>(`/presets/${presetId}`, { method: 'DELETE' }),
+  applyCast: (id: string, cast: Cast, allowOverwrite: boolean) =>
+    request<Session>(`/sessions/${id}/cast`, { method: 'POST', json: { cast, allowOverwrite } }),
+  roleplay: (id: string, scenario: string, allowOverwrite: boolean) =>
+    request<{ cast: Cast; session: Session }>(`/sessions/${id}/roleplay`, {
+      method: 'POST',
+      json: { scenario, allowOverwrite },
+    }),
   removeContext: (id: string, itemId: string) =>
     request<void>(`/sessions/${id}/context/${itemId}`, { method: 'DELETE' }),
   stop: (id: string) => request<{ stopped: boolean }>(`/sessions/${id}/stop`, { method: 'POST' }),
