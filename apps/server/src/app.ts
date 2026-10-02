@@ -9,12 +9,18 @@ import {
   createSessionSchema,
   customModelSchema,
   selfChatSchema,
+  applyCast,
+  applyCastSchema,
+  activeSlots,
+  createPresetSchema,
+  roleplaySchema,
   sendMessageSchema,
   sessionExportSchema,
   githubImportSchema,
   youtubeImportSchema,
   updateSessionSchema,
   updateSettingsSchema,
+  type Cast,
   type SessionEvent,
 } from '@agora/shared';
 import type { AppConfig } from './config';
@@ -24,6 +30,9 @@ import { BusyError, Orchestrator, RequestError } from './orchestrator';
 import { Providers } from './providers';
 import { DEFAULT_TITLE, emptyConfig, SessionStore } from './sessions';
 import { Settings } from './settings';
+import { Presets } from './presets';
+import { generateCast } from './roleplay';
+import { nanoid } from 'nanoid';
 import { ContextStore, type NewContextItem } from './contextStore';
 import { extractFile, extractFolder, IngestError } from './ingest/files';
 import { importGithub } from './ingest/github';
@@ -52,6 +61,7 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
   const store = new SessionStore(db);
   const bus = new EventBus();
   const context = new ContextStore(db);
+  const presets = new Presets(db);
   const orchestrator = new Orchestrator(store, providers, settings, bus, context);
   const detail = (id: string) => ({
     session: store.get(id, running(id))!,
@@ -92,6 +102,69 @@ export function createApp(config: AppConfig, dbFile = path.join(config.dataDir, 
     const id = c.req.query('id');
     if (!id || !settings.removeCustomModel(id)) return c.json({ error: 'Not found' }, 404);
     return c.body(null, 204);
+  });
+
+  // Saved role setups (Roles ▸ Rapid Roleplay).
+  api.get('/presets', (c) => c.json(presets.list()));
+
+  api.post('/presets', async (c) => {
+    const input = await parse(c, createPresetSchema);
+    if (input instanceof Response) return input;
+    return c.json(presets.create(input.name, input.cast), 201);
+  });
+
+  api.delete('/presets/:presetId', (c) => {
+    const preset = presets.get(c.req.param('presetId'));
+    if (!preset) return c.json({ error: 'Not found' }, 404);
+    if (preset.builtIn) return c.json({ error: 'Built-in setups can’t be deleted.' }, 400);
+    presets.remove(preset.id);
+    return c.body(null, 204);
+  });
+
+  /** Writes a cast into a chat (re-reading the config first) and tells every device. */
+  const castInto = (id: string, cast: Cast, allowOverwrite: boolean) => {
+    const current = store.get(id)!;
+    const session = store.update(id, {
+      config: applyCast(current.config, cast, allowOverwrite, () => nanoid(8)),
+    })!;
+    session.running = running(id);
+    bus.emit(id, { type: 'session', session });
+    return session;
+  };
+
+  api.post('/sessions/:id/cast', async (c) => {
+    const id = c.req.param('id');
+    const input = await parse(c, applyCastSchema);
+    if (input instanceof Response) return input;
+    if (!store.get(id)) return c.json({ error: 'Not found' }, 404);
+    return c.json(castInto(id, input.cast, input.allowOverwrite));
+  });
+
+  // Rapid Roleplay: slot 1's model writes a cast for the scenario, which is applied to the chat.
+  api.post('/sessions/:id/roleplay', async (c) => {
+    const id = c.req.param('id');
+    const input = await parse(c, roleplaySchema);
+    if (input instanceof Response) return input;
+    const session = store.get(id);
+    if (!session) return c.json({ error: 'Not found' }, 404);
+    const slots = activeSlots(session.config);
+    if (!slots.length) return c.json({ error: 'Add a model first: slot 1’s model writes the roles.' }, 400);
+    try {
+      const cast = await generateCast(
+        providers,
+        slots[0]!,
+        input.scenario,
+        settings.username(),
+        input.allowOverwrite ? undefined : slots.length,
+      );
+      return c.json({ cast, session: castInto(id, cast, input.allowOverwrite) });
+    } catch (err) {
+      if (err instanceof RequestError) return c.json({ error: err.message }, err.status);
+      return c.json(
+        { error: `Roleplay generation failed: ${err instanceof Error ? err.message : err}` },
+        502,
+      );
+    }
   });
 
   api.get('/sessions', (c) => c.json(store.list(running, c.req.query('q') ?? '')));

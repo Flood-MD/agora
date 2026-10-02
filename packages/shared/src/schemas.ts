@@ -126,5 +126,28 @@ export const customModelSchema = z.object({
 });
 
 export type CustomModelInput = z.infer<typeof customModelSchema>;
+export const castSchema = z.object({
+  setting: z.string().max(50_000),
+  characters: z
+    .array(z.object({ name: z.string().trim().min(1).max(100), prompt: z.string().max(20_000) }))
+    .min(1)
+    .max(MAX_SLOTS),
+});
+
+export const applyCastSchema = z.object({
+  cast: castSchema,
+  allowOverwrite: z.boolean(),
+});
+
+export const roleplaySchema = z.object({
+  scenario: z.string().trim().min(1).max(5_000),
+  allowOverwrite: z.boolean(),
+});
+
+export const createPresetSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  cast: castSchema,
+});
+
 export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

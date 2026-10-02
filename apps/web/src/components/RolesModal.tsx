@@ -2,10 +2,12 @@ import { applyRoles, emptyRoles, rolesOf, slotDisplayName, type Roles } from '@a
 import { useState } from 'react';
 import { useStore } from '../store';
 import { Modal } from './Modal';
+import { RapidRoleplay } from './RapidRoleplay';
 
-type Tab = 'system' | 'names' | 'slots';
+type Tab = 'roleplay' | 'system' | 'names' | 'slots';
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'roleplay', label: 'Rapid Roleplay' },
   { id: 'system', label: 'System Prompt' },
   { id: 'names', label: 'Custom Names' },
   { id: 'slots', label: 'Slot Prompts' },
@@ -15,8 +17,9 @@ const TABS: { id: Tab; label: string }[] = [
 export function RolesModal({ onClose }: { onClose: () => void }) {
   const config = useStore((s) => s.session?.config);
   const updateConfig = useStore((s) => s.updateConfig);
-  const [tab, setTab] = useState<Tab>('system');
-  const [initial] = useState(() => (config ? rolesOf(config) : undefined));
+  const adoptSession = useStore((s) => s.adoptSession);
+  const [tab, setTab] = useState<Tab>('roleplay');
+  const [initial, setInitial] = useState(() => (config ? rolesOf(config) : undefined));
   const [draft, setDraft] = useState<Roles | undefined>(initial);
 
   if (!config || !draft) return null;
@@ -75,6 +78,19 @@ export function RolesModal({ onClose }: { onClose: () => void }) {
           </button>
         ))}
       </div>
+
+      {tab === 'roleplay' && (
+        <RapidRoleplay
+          onApplied={(session) => {
+            // The cast is already saved; show the result for review and tweaks.
+            adoptSession(session);
+            const roles = rolesOf(session.config);
+            setInitial(roles);
+            setDraft(roles);
+            setTab('names');
+          }}
+        />
+      )}
 
       {tab === 'system' && (
         <section role="tabpanel" aria-label="System Prompt">
